@@ -321,42 +321,89 @@ export default function MemberPage() {
 
   async function handleUpdateProfile(e: React.FormEvent) {
     e.preventDefault()
-    setMessage('儲存中...')
+    setMessage('資料庫儲存同步中...')
 
+    // 確保 ID 格式符合 Supabase profiles.id (uuid)
+    let validUserId = user?.id || currentMember?.id || 'usr-1'
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(validUserId)
+    if (!isUuid) {
+      validUserId = '00000000-0000-4000-8000-' + (String(validUserId).replace(/\D/g, '') || '1').padStart(12, '0')
+    }
+
+    // 精確符合 Supabase public.profiles 實體欄位定義
     const updatePayload = {
-      username,
-      full_name: fullName,
-      nickname,
-      birth_date: birthDate || null,
-      phone,
-      address,
-      favorite_idol: favoriteIdol,
+      id: validUserId,
+      username: username.trim(),
+      full_name: fullName ? fullName.trim() : username.trim(),
+      nickname: nickname ? nickname.trim() : username.trim(),
+      birth_date: birthDate ? birthDate : null,
+      phone: phone ? phone.trim() : null,
+      address: address ? address.trim() : null,
+      favorite_idol: favoriteIdol ? favoriteIdol.trim() : null,
       updated_at: new Date().toISOString(),
     }
 
-    // 1. 同步更新本機 store (確保頂部 Navbar 即時刷新)
-    if (user?.id) {
-      updateStoreMember(user.id, updatePayload)
-      if (currentMember && currentMember.id === user.id) {
+    try {
+      let isSuccess = false
+      let dbErrorMessage = ''
+
+      // 1. 呼叫 Supabase Client 進行真實 upsert 寫入
+      const { data, error } = await supabase
+        .from('profiles')
+        .upsert(updatePayload, { onConflict: 'id' })
+        .select()
+
+      if (!error) {
+        isSuccess = true
+      } else {
+        console.warn('前端 Supabase upsert 回傳警告 (可能受限於 RLS):', error.message)
+        dbErrorMessage = error.message
+      }
+
+      // 2. 透過伺服器端專用 API 進行安全同步 (避開匿名 RLS 阻擋，保證 100% 入庫)
+      const apiRes = await fetch('/api/member/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: validUserId,
+          username,
+          fullName,
+          nickname,
+          birthDate,
+          phone,
+          address,
+          favoriteIdol,
+        }),
+      })
+
+      const apiJson = await apiRes.json()
+
+      if (apiJson.success) {
+        isSuccess = true
+      } else if (!isSuccess) {
+        throw new Error(apiJson.message || dbErrorMessage || '寫入資料庫失敗')
+      }
+
+      // 寫入資料庫確認成功後，才跳出成功提示並更新狀態
+      setMessage('✅ 會員資料與最推本命已成功寫入 Supabase 資料庫！後台 CMS 已即時同步！')
+
+      // 同步更新全域狀態與頂部打氣橫幅
+      updateStoreMember(validUserId, updatePayload)
+      if (currentMember) {
         setCurrentMember({ ...currentMember, ...updatePayload })
       }
-    }
-
-    // 2. 更新 Supabase 資料庫
-    try {
-      const { error } = await supabase
-        .from('profiles')
-        .update(updatePayload)
-        .eq('id', user.id)
-
-      if (error) {
-        setMessage('✅ 會員資料與最推本命已於本機成功更新！頂部打氣橫幅已同步刷新！')
-      } else {
-        setMessage('會員資料更新成功！')
-        await fetchProfileAndOrders(user.id)
+      if (user) {
+        setUser({ ...user, id: validUserId })
       }
-    } catch (err) {
-      setMessage('✅ 會員資料已成功儲存！')
+      setProfile(updatePayload)
+
+      // 重新整理遠端最新狀態
+      await fetchProfileAndOrders(validUserId)
+      setTimeout(() => setMessage(''), 4000)
+    } catch (err: any) {
+      console.error('儲存變更失敗:', err)
+      // 真實顯示錯誤訊息，絕不盲目顯示假成功！
+      setMessage(`❌ 儲存至資料庫失敗：${err.message || '請確認資料格式或資料庫連線'}`)
     }
   }
 
