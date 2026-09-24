@@ -59,6 +59,8 @@ export default function AdminPage() {
   // ==========================================
   const [idolsList, setIdolsList] = useState<any[]>([])
   const [idolSearch, setIdolSearch] = useState('')
+  const [editingIdol, setEditingIdol] = useState<any>(null)
+  const [isSavingIdol, setIsSavingIdol] = useState(false)
 
   // ==========================================
   // 3. battles (賽季對決與防弊審計)
@@ -240,6 +242,31 @@ export default function AdminPage() {
       }
     } catch (e: any) {
       alert(e.message)
+    }
+  }
+
+  async function handleSaveIdol(e: React.FormEvent) {
+    e.preventDefault()
+    if (!editingIdol) return
+    setIsSavingIdol(true)
+    try {
+      const res = await fetch('/api/admin/idols', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editingIdol),
+      })
+      const json = await res.json()
+      if (json.success) {
+        setMessage(`✅ 偶像【${editingIdol.name}】資料已成功同步更新至資料庫！`)
+        setEditingIdol(null)
+        fetchIdols()
+      } else {
+        alert(json.message || '更新失敗')
+      }
+    } catch (e: any) {
+      alert(e.message)
+    } finally {
+      setIsSavingIdol(false)
     }
   }
 
@@ -783,9 +810,19 @@ export default function AdminPage() {
                         <div className="min-w-0 flex-1">
                           <h4 className="font-bold text-slate-900 text-sm truncate">{idol.name}</h4>
                           <p className="text-xs text-slate-400 truncate mt-0.5">{idol.work}</p>
-                          <span className="inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 border border-purple-100">
-                            {idol.category}
-                          </span>
+                          <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                            <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 border border-purple-100">
+                              {idol.category}
+                            </span>
+                            {idol.match_history && (
+                              <span
+                                className="inline-block text-[10px] font-medium px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 max-w-[140px] truncate"
+                                title={idol.match_history}
+                              >
+                                🏆 {idol.match_history}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
 
@@ -795,19 +832,233 @@ export default function AdminPage() {
                           <span>{(idol.votes || 0).toLocaleString()} 票</span>
                         </div>
 
-                        <button
-                          onClick={() => handleToggleIdolStatus(idol.id, idol.status)}
-                          className={`text-xs font-bold px-2.5 py-1 rounded-lg border transition-all cursor-pointer ${
-                            idol.status === 'active'
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
-                              : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'
-                          }`}
-                        >
-                          {idol.status === 'active' ? '活躍中' : '已封存'}
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setEditingIdol({ ...idol })}
+                            className="text-xs font-bold px-2.5 py-1 rounded-lg border border-pink-200 bg-pink-50 text-pink-700 hover:bg-pink-100 flex items-center gap-1 transition-all cursor-pointer shadow-xs"
+                            title="編輯角色完整資料"
+                          >
+                            <Edit className="w-3.5 h-3.5" />
+                            <span>編輯</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleToggleIdolStatus(idol.id, idol.status)}
+                            className={`text-xs font-bold px-2.5 py-1 rounded-lg border transition-all cursor-pointer ${
+                              idol.status === 'active'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                                : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'
+                            }`}
+                          >
+                            {idol.status === 'active' ? '活躍中' : '已封存'}
+                          </button>
+                        </div>
                       </div>
                     </div>
                   ))}
+              </div>
+            )}
+
+            {/* ==========================================
+                編輯動漫角色與偶像對話框 (Modal)
+            ========================================== */}
+            {editingIdol && (
+              <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+                <div
+                  className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-2xl my-8 overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in zoom-in-95 duration-200"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {/* Modal Header */}
+                  <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/80 shrink-0">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-9 h-9 rounded-xl bg-pink-100 text-pink-600 flex items-center justify-center font-bold">
+                        <Edit className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h3 className="text-base font-black text-slate-900">
+                          編輯角色與偶像檔案
+                        </h3>
+                        <p className="text-xs text-slate-400">編號 ID: {editingIdol.id}</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setEditingIdol(null)}
+                      className="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  {/* Modal Form */}
+                  <form onSubmit={handleSaveIdol} className="flex-1 overflow-y-auto p-6 space-y-5">
+                    {/* 圖片預覽與連結 */}
+                    <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200 flex flex-col sm:flex-row items-center gap-4">
+                      <div className="w-20 h-20 rounded-2xl overflow-hidden shrink-0 border-2 border-pink-200 shadow-sm relative bg-white">
+                        <SmartAvatar
+                          src={editingIdol.avatar || '/images/idols/sung-jinwoo.jpg'}
+                          alt={editingIdol.name || '預覽'}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      <div className="flex-1 w-full space-y-1">
+                        <label className="block text-xs font-bold text-slate-700">
+                          角色圖片連結 (Image URL / 本地路徑) <span className="text-rose-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={editingIdol.avatar || ''}
+                          onChange={(e) =>
+                            setEditingIdol({ ...editingIdol, avatar: e.target.value })
+                          }
+                          placeholder="/images/idols/sung-jinwoo.jpg 或外部網址"
+                          className="block w-full rounded-xl border border-slate-300 px-3 py-2 text-xs focus:border-pink-500 focus:ring-1 focus:ring-pink-500 bg-white"
+                        />
+                        <p className="text-[11px] text-slate-400">
+                          建議優先使用本地路徑（例如 <code className="text-pink-600 font-semibold">/images/idols/xxx.jpg</code>），以避開外部防盜鏈。
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {/* 角色名稱 */}
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          角色名稱 (Character Name) <span className="text-rose-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={editingIdol.name || ''}
+                          onChange={(e) =>
+                            setEditingIdol({ ...editingIdol, name: e.target.value })
+                          }
+                          className="block w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm focus:border-pink-500 focus:ring-1 focus:ring-pink-500"
+                        />
+                      </div>
+
+                      {/* 動漫/作品名稱 */}
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          動漫 / 作品名稱 (Anime Title) <span className="text-rose-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={editingIdol.work || ''}
+                          onChange={(e) =>
+                            setEditingIdol({ ...editingIdol, work: e.target.value })
+                          }
+                          className="block w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm focus:border-pink-500 focus:ring-1 focus:ring-pink-500"
+                        />
+                      </div>
+
+                      {/* 角色屬性/標籤 */}
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          角色屬性 / 標籤 (Attributes)
+                        </label>
+                        <input
+                          type="text"
+                          value={editingIdol.category || ''}
+                          onChange={(e) =>
+                            setEditingIdol({ ...editingIdol, category: e.target.value })
+                          }
+                          placeholder="例如：特級咒術師、四代女團、暗影君王"
+                          className="block w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm focus:border-pink-500 focus:ring-1 focus:ring-pink-500"
+                        />
+                      </div>
+
+                      {/* 角色狀態 */}
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          角色狀態 (Status)
+                        </label>
+                        <select
+                          value={editingIdol.status || 'active'}
+                          onChange={(e) =>
+                            setEditingIdol({ ...editingIdol, status: e.target.value })
+                          }
+                          className="block w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm focus:border-pink-500 focus:ring-1 focus:ring-pink-500 bg-white"
+                        >
+                          <option value="active">活躍中 (開放前台投票與擂台對決)</option>
+                          <option value="archived">已封存 (停止前台投票並凍結數據)</option>
+                        </select>
+                      </div>
+
+                      {/* 票數 */}
+                      <div className="sm:col-span-2">
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          總累積票數 (Vote Count)
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            min="0"
+                            value={editingIdol.votes ?? 0}
+                            onChange={(e) =>
+                              setEditingIdol({ ...editingIdol, votes: Number(e.target.value) })
+                            }
+                            className="block w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm focus:border-pink-500 focus:ring-1 focus:ring-pink-500"
+                          />
+                          <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                            票
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* 對抗活動紀錄 */}
+                      <div className="sm:col-span-2">
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          對抗活動紀錄 (Match History)
+                        </label>
+                        <textarea
+                          rows={3}
+                          value={editingIdol.match_history || ''}
+                          onChange={(e) =>
+                            setEditingIdol({ ...editingIdol, match_history: e.target.value })
+                          }
+                          placeholder="例如：2026 第一季巔峰決戰 冠軍 (勝率 78%)、夏季跨界人氣大賞 8強"
+                          className="block w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm focus:border-pink-500 focus:ring-1 focus:ring-pink-500"
+                        />
+                        <p className="text-[11px] text-slate-400 mt-1">
+                          紀錄該角色參與之拔河對決、聯名活動或歷史勝負數據，供後台審計與前台檔案展示。
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Modal Footer */}
+                    <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-3 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setEditingIdol(null)}
+                        className="px-5 py-2.5 rounded-xl text-xs font-bold text-slate-600 bg-white border border-slate-300 hover:bg-slate-50 transition cursor-pointer"
+                      >
+                        取消
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isSavingIdol}
+                        className="px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-pink-600 hover:bg-pink-700 shadow-md hover:shadow-lg transition cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+                      >
+                        {isSavingIdol ? (
+                          <>
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            <span>同步至資料庫中...</span>
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>儲存並同步至資料庫</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </form>
+                </div>
               </div>
             )}
           </div>

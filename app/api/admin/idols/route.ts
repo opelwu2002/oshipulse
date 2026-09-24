@@ -26,7 +26,7 @@ export async function GET() {
 export async function PUT(request: Request) {
   try {
     const body = await request.json();
-    const { id, status, votes } = body;
+    const { id, name, work, category, avatar, status, votes, match_history } = body;
 
     if (!id) {
       return NextResponse.json({ success: false, message: "缺少偶像 ID" }, { status: 400 });
@@ -35,14 +35,33 @@ export async function PUT(request: Request) {
     const updatePayload: any = {
       updated_at: new Date().toISOString(),
     };
+    if (name !== undefined) updatePayload.name = name;
+    if (work !== undefined) updatePayload.work = work;
+    if (category !== undefined) updatePayload.category = category;
+    if (avatar !== undefined) updatePayload.avatar = avatar;
     if (status !== undefined) updatePayload.status = status;
-    if (votes !== undefined) updatePayload.votes = votes;
+    if (votes !== undefined) updatePayload.votes = Number(votes) || 0;
+    if (match_history !== undefined) updatePayload.match_history = match_history;
 
-    const { data, error } = await supabaseAdmin
+    // 嘗試完整寫入 Supabase idols 資料表
+    let { data, error } = await supabaseAdmin
       .from("idols")
       .update(updatePayload)
       .eq("id", id)
       .select();
+
+    // 防呆相容：若資料庫尚未手動新增 match_history 欄位導致報錯，降級排除該欄位重新更新
+    if (error && (error.code === "PGRST204" || error.message.includes("match_history"))) {
+      const fallbackPayload = { ...updatePayload };
+      delete fallbackPayload.match_history;
+      const fallbackResult = await supabaseAdmin
+        .from("idols")
+        .update(fallbackPayload)
+        .eq("id", id)
+        .select();
+      data = fallbackResult.data;
+      error = fallbackResult.error;
+    }
 
     if (error) {
       return NextResponse.json({ success: false, message: error.message }, { status: 500 });

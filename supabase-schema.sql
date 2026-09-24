@@ -68,9 +68,13 @@ CREATE TABLE IF NOT EXISTS public.idols (
   votes BIGINT DEFAULT 0,
   avatar TEXT NOT NULL,
   status TEXT DEFAULT 'active',
+  match_history TEXT,
   created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()),
   updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now())
 );
+
+-- 安全補齊 match_history 欄位（相容既有資料庫）
+ALTER TABLE public.idols ADD COLUMN IF NOT EXISTS match_history TEXT;
 
 ALTER TABLE public.idols ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Idols full access" ON public.idols;
