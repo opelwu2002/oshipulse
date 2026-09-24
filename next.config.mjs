@@ -2,21 +2,21 @@
 const nextConfig = {
   reactStrictMode: true,
   images: {
+    domains: [
+      's4.anilist.co',
+      'upload.wikimedia.org',
+      'images.unsplash.com',
+      'raw.githubusercontent.com',
+      'cdn.myanimelist.net',
+      'i.imgur.com',
+    ],
     remotePatterns: [
       {
         protocol: 'https',
-        hostname: 's4.anilist.co',
+        hostname: '**',
       },
       {
-        protocol: 'https',
-        hostname: 'upload.wikimedia.org',
-      },
-      {
-        protocol: 'https',
-        hostname: 'images.unsplash.com',
-      },
-      {
-        protocol: 'https',
+        protocol: 'http',
         hostname: '**',
       },
     ],

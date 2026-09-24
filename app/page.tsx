@@ -187,7 +187,7 @@ export default function HomePage() {
                       </span>
                       <div className="relative w-12 h-12 rounded-xl overflow-hidden shrink-0 border border-slate-200">
                         <SafeImage
-                          src={idol.avatar_url}
+                          src={idol.avatar_url || (idol as any).avatar || (idol as any).image_url || (idol as any).headshot_url}
                           alt={idol.name}
                           fill
                           className="object-cover"

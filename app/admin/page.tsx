@@ -802,7 +802,7 @@ export default function AdminPage() {
                       <div className="flex items-center gap-3 mb-3">
                         <div className="w-14 h-14 rounded-2xl overflow-hidden shrink-0 border border-slate-100 shadow-sm relative">
                           <SmartAvatar
-                            src={idol.avatar}
+                            src={idol.avatar || idol.avatar_url || idol.image_url || idol.headshot_url}
                             alt={idol.name}
                             className="w-full h-full object-cover"
                           />
@@ -835,7 +835,17 @@ export default function AdminPage() {
                         <div className="flex items-center gap-2">
                           <button
                             type="button"
-                            onClick={() => setEditingIdol({ ...idol })}
+                            onClick={() =>
+                              setEditingIdol({
+                                ...idol,
+                                avatar:
+                                  idol.avatar ||
+                                  idol.avatar_url ||
+                                  idol.image_url ||
+                                  idol.headshot_url ||
+                                  '',
+                              })
+                            }
                             className="text-xs font-bold px-2.5 py-1 rounded-lg border border-pink-200 bg-pink-50 text-pink-700 hover:bg-pink-100 flex items-center gap-1 transition-all cursor-pointer shadow-xs"
                             title="編輯角色完整資料"
                           >

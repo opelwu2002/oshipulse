@@ -197,7 +197,7 @@ export default function IdolsPage() {
                   {/* 1:1 頭像展示 */}
                   <div className="relative w-full aspect-square rounded-2xl overflow-hidden mb-4 bg-slate-100 border border-slate-100">
                     <SafeImage
-                      src={idol.avatar_url}
+                      src={idol.avatar_url || (idol as any).avatar || (idol as any).image_url || (idol as any).headshot_url}
                       alt={idol.name}
                       fill
                       className="object-cover group-hover:scale-105 transition-transform duration-500"

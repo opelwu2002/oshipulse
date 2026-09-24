@@ -173,7 +173,7 @@ export default function TugOfWarArena() {
                 }`}
               >
                 <SafeImage
-                  src={rank1.avatar_url}
+                  src={rank1.avatar_url || (rank1 as any).avatar || (rank1 as any).image_url}
                   alt={rank1.name}
                   fill
                   className="object-cover"
@@ -215,7 +215,7 @@ export default function TugOfWarArena() {
                 }`}
               >
                 <SafeImage
-                  src={rank2.avatar_url}
+                  src={rank2.avatar_url || (rank2 as any).avatar || (rank2 as any).image_url}
                   alt={rank2.name}
                   fill
                   className="object-cover"

@@ -123,7 +123,7 @@ export default function CinematicHero() {
               {/* 立繪展示 */}
               <div className="relative w-full aspect-square rounded-2xl overflow-hidden bg-slate-950 mb-4 border border-white/10 shadow-inner">
                 <SafeImage
-                  src={currentHero.avatar_url}
+                  src={currentHero.avatar_url || (currentHero as any).avatar || (currentHero as any).image_url}
                   alt={currentHero.name}
                   fill
                   sizes="(max-width: 640px) 100vw, 380px"

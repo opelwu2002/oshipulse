@@ -74,7 +74,7 @@ export default function IdolDetailPage() {
         {/* 16:9 封面 */}
         <div className="relative w-full aspect-[16/9] max-h-96">
           <SafeImage
-            src={idol.cover_url || "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=1200"}
+            src={idol.cover_url || (idol as any).cover || (idol as any).banner_url || "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=1200"}
             alt={`${idol.name} 封面`}
             fill
             className="object-cover opacity-80"
@@ -90,7 +90,7 @@ export default function IdolDetailPage() {
             {/* 1:1 頭像 */}
             <div className="relative w-24 h-24 sm:w-36 sm:h-36 rounded-3xl overflow-hidden border-4 border-white shadow-2xl shrink-0 bg-slate-100">
               <SafeImage
-                src={idol.avatar_url}
+                src={idol.avatar_url || (idol as any).avatar || (idol as any).image_url || (idol as any).headshot_url}
                 alt={idol.name}
                 fill
                 className="object-cover"
@@ -149,7 +149,7 @@ export default function IdolDetailPage() {
                   >
                     <div className="relative w-12 h-12 rounded-xl overflow-hidden bg-slate-200 shrink-0">
                       <SafeImage
-                        src={member.avatar_url}
+                        src={member.avatar_url || (member as any).avatar || (member as any).image_url}
                         alt={member.name}
                         fill
                         className="object-cover"

@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 
 export interface SmartAvatarProps extends Omit<React.ImgHTMLAttributes<HTMLImageElement>, "src"> {
-  src?: string | null;
+  src?: string | null | any;
   alt?: string;
   className?: string;
   fallbackInitial?: string;
@@ -33,10 +33,31 @@ function getGradientTheme(name: string) {
 }
 
 /**
+ * 自動解析可能的圖片來源屬性 (avatar, avatar_url, image_url, headshot_url, cover_url)
+ */
+function resolveImageUrl(srcInput: any): string {
+  if (!srcInput) return "";
+  if (typeof srcInput === "string") return srcInput.trim();
+  if (typeof srcInput === "object") {
+    return (
+      srcInput.avatar ||
+      srcInput.avatar_url ||
+      srcInput.image_url ||
+      srcInput.headshot_url ||
+      srcInput.cover_url ||
+      srcInput.src ||
+      ""
+    ).trim();
+  }
+  return "";
+}
+
+/**
  * SmartAvatar 高可用性智慧圖片元件
- * 1. 支援本地相對路徑與外部 URL
- * 2. 外部圖片自動注入 referrerPolicy="no-referrer" 抵禦防盜鏈
- * 3. 圖片載入失敗或破圖時，絕不顯示瀏覽器蛋圖，優雅切換為專屬首字光暈漸層 UI
+ * 1. 支援本地相對路徑與外部 URL (如 AniList, Wikimedia, Unsplash 等)
+ * 2. 外部圖片注入 referrerPolicy="no-referrer" 繞過官網防盜鏈 (403 Forbidden)
+ * 3. 移除 crossOrigin="anonymous"，避免第三方圖床因缺少 Access-Control-Allow-Origin 觸發瀏覽器 CORS 封鎖
+ * 4. 僅在圖片真實載入失敗時才優雅降級為首字漸層 UI，優先保證網路圖片 100% 正常渲染
  */
 export default function SmartAvatar({
   src,
@@ -49,11 +70,12 @@ export default function SmartAvatar({
   ...props
 }: SmartAvatarProps) {
   const [hasError, setHasError] = useState(false);
+  const resolvedSrc = useMemo(() => resolveImageUrl(src), [src]);
 
-  // 當 src 變更時重置錯誤狀態
+  // 當 resolvedSrc 變更時重置錯誤狀態
   useEffect(() => {
     setHasError(false);
-  }, [src]);
+  }, [resolvedSrc]);
 
   // 計算首字 (Fallback Initial)
   const initial = useMemo(() => {
@@ -68,13 +90,13 @@ export default function SmartAvatar({
   const fillClasses = fill ? "absolute inset-0 w-full h-full object-cover" : "";
 
   // 🛡️ 破圖捕捉或無路徑：顯示質感漸層首字徽章
-  if (!src || hasError) {
+  if (!resolvedSrc || hasError) {
     return (
       <div
         className={`flex items-center justify-center bg-gradient-to-br ${theme.from} ${theme.via} ${theme.to} ${theme.text} select-none relative overflow-hidden transition-all duration-300 ${
           fill ? "absolute inset-0 w-full h-full" : ""
         } ${className}`}
-        title={`${alt} (本地專屬視覺)`}
+        title={`${alt} (預設視覺)`}
         role="img"
         aria-label={alt}
       >
@@ -97,11 +119,11 @@ export default function SmartAvatar({
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      src={src}
+      src={resolvedSrc}
       alt={alt}
       referrerPolicy="no-referrer"
-      crossOrigin="anonymous"
       loading={priority ? "eager" : "lazy"}
+      decoding="async"
       onError={(e) => {
         setHasError(true);
         if (onError) onError(e);
