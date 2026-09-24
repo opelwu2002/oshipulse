@@ -110,3 +110,8 @@ export async function PUT(request: Request) {
     return NextResponse.json({ success: false, message: `伺服器異常: ${err.message}` }, { status: 500 });
   }
 }
+
+export async function POST(request: Request) {
+  // POST 轉發呼叫 PUT 相同之 upsert/insert 邏輯
+  return PUT(request);
+}

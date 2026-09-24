@@ -81,7 +81,9 @@ export default function AdminPage() {
   // 5. store (商城庫存與出貨)
   // ==========================================
   const [ordersList, setOrdersList] = useState<any[]>([])
-  const [orderFilter, setOrderFilter] = useState<'all' | 'pending' | 'shipped'>('all')
+  const [orderFilter, setOrderFilter] = useState<'all' | 'pending' | 'shipped' | 'cancelled'>('all')
+  const [editingOrder, setEditingOrder] = useState<any>(null)
+  const [isSavingOrder, setIsSavingOrder] = useState(false)
 
   // ==========================================
   // 6. messages (粉絲諮詢與郵件回覆)
@@ -89,6 +91,8 @@ export default function AdminPage() {
   const [messagesList, setMessagesList] = useState<any[]>([])
   const [selectedMessage, setSelectedMessage] = useState<any>(null)
   const [replyContent, setReplyContent] = useState('')
+  const [editingMessage, setEditingMessage] = useState<any>(null)
+  const [isSavingMessage, setIsSavingMessage] = useState(false)
 
   // ==========================================
   // 7. members (會員與粉絲檔案)
@@ -385,6 +389,22 @@ export default function AdminPage() {
     }
   }
 
+  function handleDuplicateIdol(idol: any) {
+    const copyId = `${idol.id}-copy-${Date.now().toString().slice(-4)}`
+    setEditingIdol({
+      id: copyId,
+      name: `${idol.name} (副本)`,
+      work: idol.work || '',
+      category: idol.category || '',
+      avatar: idol.avatar || idol.avatar_url || idol.image_url || idol.headshot_url || '/images/idols/sung-jinwoo.jpg',
+      status: 'active',
+      votes: Number(idol.votes) || 0,
+      match_history: idol.match_history || '',
+      isNew: true,
+      isCopy: true,
+    })
+  }
+
   // 3. 對決與日誌
   async function fetchBattles() {
     try {
@@ -489,18 +509,87 @@ export default function AdminPage() {
 
   async function handleShipOrder(orderId: string) {
     try {
+      const { error: dbError } = await supabase
+        .from('orders')
+        .update({ status: 'shipped' })
+        .eq('id', orderId)
+
       const res = await fetch('/api/admin/orders', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: orderId, status: 'shipped' }),
       })
       const json = await res.json()
-      if (json.success) {
-        setMessage(`📦 訂單 ${orderId} 狀態已更新為【已出貨】！`)
-        fetchOrders()
+      if (dbError && !json.success) {
+        throw new Error(dbError.message || json.message)
       }
+
+      setMessage(`📦 訂單 ${orderId} 狀態已更新為【已出貨】！`)
+      fetchOrders()
     } catch (e: any) {
       alert(e.message)
+    }
+  }
+
+  async function handleSaveOrder(e: React.FormEvent) {
+    e.preventDefault()
+    if (!editingOrder) return
+    setIsSavingOrder(true)
+    try {
+      const cleanPayload = {
+        buyer_name: (editingOrder.buyer_name || '').trim(),
+        buyer_phone: (editingOrder.buyer_phone || '').trim(),
+        item_name: (editingOrder.item_name || '').trim(),
+        amount: Number(editingOrder.amount) || 0,
+        status: editingOrder.status || 'pending',
+      }
+
+      // 1. 直連 Supabase 更新
+      const { error: dbError } = await supabase
+        .from('orders')
+        .update(cleanPayload)
+        .eq('id', editingOrder.id)
+
+      // 2. 備援管理員 API
+      const res = await fetch('/api/admin/orders', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: editingOrder.id, ...cleanPayload }),
+      })
+      const json = await res.json()
+
+      if (dbError && !json.success) {
+        throw new Error(dbError.message || json.message)
+      }
+
+      setMessage(`✅ 訂單【${editingOrder.id}】資料已成功同步更新至資料庫！`)
+      setEditingOrder(null)
+      fetchOrders()
+    } catch (err: any) {
+      console.error('更新訂單失敗:', err)
+      alert(`❌ 更新訂單失敗：${err.message}`)
+    } finally {
+      setIsSavingOrder(false)
+    }
+  }
+
+  async function handleDeleteOrder(id: string) {
+    if (!confirm(`⚠️ 確定要永久刪除此筆訂單【${id}】嗎？此操作將自資料庫完全抹除且不可復原！`)) return
+    try {
+      const { error: dbError } = await supabase.from('orders').delete().eq('id', id)
+      const res = await fetch(`/api/admin/orders?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
+      const json = await res.json()
+
+      if (dbError && !json.success) {
+        throw new Error(dbError.message || json.message)
+      }
+
+      setOrdersList((prev) => prev.filter((o) => o.id !== id))
+      setMessage(`🗑️ 訂單【${id}】已成功從資料庫永久刪除！`)
+      fetchOrders()
+    } catch (err: any) {
+      console.error('刪除訂單失敗:', err)
+      alert(`❌ 刪除訂單失敗：${err.message}`)
     }
   }
 
@@ -515,7 +604,13 @@ export default function AdminPage() {
       } else if (json.success) {
         setMessagesList(json.data || [])
         if (json.data && json.data.length > 0) {
-          setSelectedMessage(json.data[0])
+          setSelectedMessage((prev: any) => {
+            if (prev) {
+              const found = json.data.find((m: any) => m.id === prev.id)
+              return found || json.data[0]
+            }
+            return json.data[0]
+          })
         } else {
           setSelectedMessage(null)
         }
@@ -531,6 +626,14 @@ export default function AdminPage() {
     e.preventDefault()
     if (!selectedMessage || !replyContent.trim()) return
     try {
+      const { error: dbError } = await supabase
+        .from('messages')
+        .update({
+          status: 'replied',
+          reply_content: replyContent.trim(),
+        })
+        .eq('id', selectedMessage.id)
+
       const res = await fetch('/api/admin/messages', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -541,13 +644,106 @@ export default function AdminPage() {
         }),
       })
       const json = await res.json()
-      if (json.success) {
-        setMessage(`✉️ 已將回覆寫入資料庫並標記處理完成！`)
-        setReplyContent('')
-        fetchMessages()
+
+      if (dbError && !json.success) {
+        throw new Error(dbError.message || json.message)
       }
+
+      setMessage(`✉️ 已將回覆寫入資料庫並標記處理完成！`)
+      setReplyContent('')
+      fetchMessages()
     } catch (e: any) {
       alert(e.message)
+    }
+  }
+
+  async function handleSaveMessage(e: React.FormEvent) {
+    e.preventDefault()
+    if (!editingMessage) return
+    setIsSavingMessage(true)
+    try {
+      const cleanPayload = {
+        subject: (editingMessage.subject || '').trim(),
+        category: (editingMessage.category || '').trim(),
+        sender: (editingMessage.sender || '').trim(),
+        email: (editingMessage.email || '').trim(),
+        content: (editingMessage.content || '').trim(),
+        status: editingMessage.status || 'unread',
+      }
+
+      const { error: dbError } = await supabase
+        .from('messages')
+        .update(cleanPayload)
+        .eq('id', editingMessage.id)
+
+      const res = await fetch('/api/admin/messages', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: editingMessage.id, ...cleanPayload }),
+      })
+      const json = await res.json()
+
+      if (dbError && !json.success) {
+        throw new Error(dbError.message || json.message)
+      }
+
+      setMessage(`✅ 粉絲諮詢案【${cleanPayload.subject}】已成功同步更新！`)
+      setSelectedMessage((prev: any) =>
+        prev?.id === editingMessage.id ? { ...prev, ...cleanPayload } : prev
+      )
+      setEditingMessage(null)
+      fetchMessages()
+    } catch (err: any) {
+      console.error('更新諮詢案失敗:', err)
+      alert(`❌ 更新諮詢案失敗：${err.message}`)
+    } finally {
+      setIsSavingMessage(false)
+    }
+  }
+
+  async function handleDeleteMessage(id: number | string) {
+    if (!confirm('⚠️ 確定要永久刪除此筆粉絲諮詢紀錄嗎？刪除後無法復原。')) return
+    try {
+      const { error: dbError } = await supabase.from('messages').delete().eq('id', id)
+      const res = await fetch(`/api/admin/messages?id=${id}`, { method: 'DELETE' })
+      const json = await res.json()
+
+      if (dbError && !json.success) {
+        throw new Error(dbError.message || json.message)
+      }
+
+      setMessage('🗑️ 粉絲諮詢案件已成功刪除！')
+      setSelectedMessage(null)
+      fetchMessages()
+    } catch (err: any) {
+      console.error('刪除訊息失敗:', err)
+      alert('刪除訊息失敗：' + err.message)
+    }
+  }
+
+  async function handleDeleteReply(id: number | string) {
+    if (!confirm('確定要清除此筆回覆紀錄嗎？清除後狀態將轉為【未處理】。')) return
+    try {
+      const { error: dbError } = await supabase
+        .from('messages')
+        .update({ reply_content: null, status: 'unread' })
+        .eq('id', id)
+
+      const res = await fetch('/api/admin/messages', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, reply_content: null, status: 'unread' }),
+      })
+      const json = await res.json()
+
+      if (dbError && !json.success) {
+        throw new Error(dbError.message || json.message)
+      }
+
+      setMessage('🗑️ 已成功刪除回覆內容並重設案件狀態！')
+      fetchMessages()
+    } catch (err: any) {
+      alert(err.message)
     }
   }
 
@@ -880,7 +1076,28 @@ export default function AdminPage() {
                 </p>
               </div>
 
-              <div className="flex items-center gap-3 w-full sm:w-auto">
+              <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setEditingIdol({
+                      id: 'char-' + Date.now().toString().slice(-6),
+                      name: '',
+                      work: '',
+                      category: '動漫角色',
+                      avatar: '/images/idols/sung-jinwoo.jpg',
+                      status: 'active',
+                      votes: 0,
+                      match_history: '',
+                      isNew: true,
+                    })
+                  }
+                  className="px-4 py-2 bg-pink-600 hover:bg-pink-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>新增角色或偶像</span>
+                </button>
+
                 <div className="relative flex-1 sm:w-64">
                   <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                   <input
@@ -947,7 +1164,17 @@ export default function AdminPage() {
                           <span>{(idol.votes || 0).toLocaleString()} 票</span>
                         </div>
 
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleDuplicateIdol(idol)}
+                            className="text-xs font-bold px-2 py-1 rounded-lg border border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100 flex items-center gap-1 transition-all cursor-pointer shadow-xs"
+                            title="一鍵複製此角色並快速建立副本"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                            <span>複製</span>
+                          </button>
+
                           <button
                             type="button"
                             onClick={() =>
@@ -961,7 +1188,7 @@ export default function AdminPage() {
                                   '',
                               })
                             }
-                            className="text-xs font-bold px-2.5 py-1 rounded-lg border border-pink-200 bg-pink-50 text-pink-700 hover:bg-pink-100 flex items-center gap-1 transition-all cursor-pointer shadow-xs"
+                            className="text-xs font-bold px-2 py-1 rounded-lg border border-pink-200 bg-pink-50 text-pink-700 hover:bg-pink-100 flex items-center gap-1 transition-all cursor-pointer shadow-xs"
                             title="編輯角色完整資料"
                           >
                             <Edit className="w-3.5 h-3.5" />
@@ -999,13 +1226,19 @@ export default function AdminPage() {
                   <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/80 shrink-0">
                     <div className="flex items-center gap-2.5">
                       <div className="w-9 h-9 rounded-xl bg-pink-100 text-pink-600 flex items-center justify-center font-bold">
-                        <Edit className="w-5 h-5" />
+                        {editingIdol.isCopy ? <Copy className="w-5 h-5" /> : editingIdol.isNew ? <Plus className="w-5 h-5" /> : <Edit className="w-5 h-5" />}
                       </div>
                       <div>
                         <h3 className="text-base font-black text-slate-900">
-                          編輯角色與偶像檔案
+                          {editingIdol.isCopy
+                            ? '一鍵複製建立新角色 (副本)'
+                            : editingIdol.isNew
+                            ? '新增動漫角色或偶像名冊'
+                            : '編輯角色與偶像檔案'}
                         </h3>
-                        <p className="text-xs text-slate-400">編號 ID: {editingIdol.id}</p>
+                        <p className="text-xs text-slate-400">
+                          {editingIdol.isNew ? '即刻直連寫入 Supabase 資料庫' : `編號 ID: ${editingIdol.id}`}
+                        </p>
                       </div>
                     </div>
                     <button
@@ -1019,6 +1252,28 @@ export default function AdminPage() {
 
                   {/* Modal Form */}
                   <form onSubmit={handleSaveIdol} className="flex-1 overflow-y-auto p-6 space-y-5">
+                    {/* 若為新增或複製，提供 ID 自訂輸入框 */}
+                    {(editingIdol.isNew || editingIdol.isCopy) && (
+                      <div className="bg-pink-50/50 rounded-2xl p-4 border border-pink-100 space-y-1">
+                        <label className="block text-xs font-bold text-pink-900">
+                          角色唯一識別碼 ID (必填，供資料庫索引) <span className="text-rose-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={editingIdol.id || ''}
+                          onChange={(e) =>
+                            setEditingIdol({ ...editingIdol, id: e.target.value.trim() })
+                          }
+                          placeholder="例如 char-sung-jinwoo-2 或 idol-new"
+                          className="block w-full rounded-xl border border-pink-200 px-3 py-2 text-xs font-mono font-bold focus:border-pink-500 focus:ring-1 focus:ring-pink-500 bg-white"
+                        />
+                        <p className="text-[11px] text-pink-600/80">
+                          系統已預先為您產生安全唯一 ID，您亦可依需求微調為好記的英數字代碼。
+                        </p>
+                      </div>
+                    )}
+
                     {/* 圖片預覽與連結 */}
                     <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200 flex flex-col sm:flex-row items-center gap-4">
                       <div className="w-20 h-20 rounded-2xl overflow-hidden shrink-0 border-2 border-pink-200 shadow-sm relative bg-white">
@@ -1177,7 +1432,7 @@ export default function AdminPage() {
                         ) : (
                           <>
                             <CheckCircle2 className="w-3.5 h-3.5" />
-                            <span>儲存並同步至資料庫</span>
+                            <span>{editingIdol.isNew ? '確認新增並寫入資料庫' : '儲存並同步至資料庫'}</span>
                           </>
                         )}
                       </button>
@@ -1442,7 +1697,7 @@ export default function AdminPage() {
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                {(['all', 'pending', 'shipped'] as const).map((mode) => (
+                {(['all', 'pending', 'shipped', 'cancelled'] as const).map((mode) => (
                   <button
                     key={mode}
                     onClick={() => setOrderFilter(mode)}
@@ -1452,7 +1707,13 @@ export default function AdminPage() {
                         : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
                     }`}
                   >
-                    {mode === 'all' ? '全部訂單' : mode === 'pending' ? '待出貨' : '已出貨'}
+                    {mode === 'all'
+                      ? '全部訂單'
+                      : mode === 'pending'
+                      ? '待出貨'
+                      : mode === 'shipped'
+                      ? '已出貨'
+                      : '已取消'}
                   </button>
                 ))}
               </div>
@@ -1474,7 +1735,7 @@ export default function AdminPage() {
                       <th className="px-4 py-3 text-left">收件粉絲</th>
                       <th className="px-4 py-3 text-left">金額</th>
                       <th className="px-4 py-3 text-left">狀態</th>
-                      <th className="px-4 py-3 text-right">出貨處置</th>
+                      <th className="px-4 py-3 text-right">管理操作</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 bg-white">
@@ -1498,28 +1759,185 @@ export default function AdminPage() {
                               className={`px-2.5 py-0.5 rounded font-bold text-[10px] ${
                                 o.status === 'shipped'
                                   ? 'bg-emerald-100 text-emerald-800'
+                                  : o.status === 'cancelled'
+                                  ? 'bg-rose-100 text-rose-800'
                                   : 'bg-amber-100 text-amber-800'
                               }`}
                             >
-                              {o.status === 'shipped' ? '已出貨' : '待處理'}
+                              {o.status === 'shipped'
+                                ? '已出貨'
+                                : o.status === 'cancelled'
+                                ? '已取消'
+                                : '待處理'}
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-right">
-                            {o.status === 'pending' ? (
+                          <td className="px-4 py-3 text-right whitespace-nowrap">
+                            <div className="flex items-center justify-end gap-1.5">
+                              {o.status === 'pending' && (
+                                <button
+                                  onClick={() => handleShipOrder(o.id)}
+                                  className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-lg transition cursor-pointer text-xs"
+                                  title="一鍵標記為已出貨"
+                                >
+                                  一鍵出貨
+                                </button>
+                              )}
                               <button
-                                onClick={() => handleShipOrder(o.id)}
-                                className="px-3 py-1 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-lg transition cursor-pointer"
+                                onClick={() => setEditingOrder({ ...o })}
+                                className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg border border-blue-200 transition cursor-pointer flex items-center gap-1 text-xs font-bold"
+                                title="編輯訂單資料"
                               >
-                                一鍵出貨
+                                <Edit className="w-3.5 h-3.5" />
+                                <span>編輯</span>
                               </button>
-                            ) : (
-                              <span className="text-emerald-600 font-bold">已完成配送</span>
-                            )}
+                              <button
+                                onClick={() => handleDeleteOrder(o.id)}
+                                className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg border border-rose-200 transition cursor-pointer flex items-center gap-1 text-xs font-bold"
+                                title="從資料庫永久刪除此訂單"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                <span>刪單</span>
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+
+            {/* 訂單編輯 Modal */}
+            {editingOrder && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+                <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-slate-100 space-y-5">
+                  <div className="flex justify-between items-center pb-4 border-b border-slate-100">
+                    <div>
+                      <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                        <Package className="w-5 h-5 text-pink-600" />
+                        編輯應援訂單資料
+                      </h3>
+                      <p className="text-xs text-slate-400 font-mono mt-0.5">
+                        訂單編號：{editingOrder.id}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setEditingOrder(null)}
+                      className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  <form onSubmit={handleSaveOrder} className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        訂購商品名稱
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={editingOrder.item_name || ''}
+                        onChange={(e) =>
+                          setEditingOrder({ ...editingOrder, item_name: e.target.value })
+                        }
+                        className="w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm focus:border-pink-500 focus:ring-1 focus:ring-pink-500"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          收件粉絲姓名
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={editingOrder.buyer_name || ''}
+                          onChange={(e) =>
+                            setEditingOrder({ ...editingOrder, buyer_name: e.target.value })
+                          }
+                          className="w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm focus:border-pink-500 focus:ring-1 focus:ring-pink-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          聯絡電話
+                        </label>
+                        <input
+                          type="text"
+                          value={editingOrder.buyer_phone || ''}
+                          onChange={(e) =>
+                            setEditingOrder({ ...editingOrder, buyer_phone: e.target.value })
+                          }
+                          placeholder="0912-345-678"
+                          className="w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm focus:border-pink-500 focus:ring-1 focus:ring-pink-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          訂單金額 (NT$)
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          required
+                          value={editingOrder.amount || 0}
+                          onChange={(e) =>
+                            setEditingOrder({ ...editingOrder, amount: Number(e.target.value) })
+                          }
+                          className="w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm focus:border-pink-500 focus:ring-1 focus:ring-pink-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          出貨與配送狀態
+                        </label>
+                        <select
+                          value={editingOrder.status || 'pending'}
+                          onChange={(e) =>
+                            setEditingOrder({ ...editingOrder, status: e.target.value })
+                          }
+                          className="w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm focus:border-pink-500 focus:ring-1 focus:ring-pink-500 bg-white"
+                        >
+                          <option value="pending">待處理（待出貨）</option>
+                          <option value="shipped">已出貨（已配送）</option>
+                          <option value="cancelled">已取消（已作廢）</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setEditingOrder(null)}
+                        className="px-5 py-2.5 rounded-xl text-xs font-bold text-slate-600 bg-white border border-slate-300 hover:bg-slate-50 transition cursor-pointer"
+                      >
+                        取消
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isSavingOrder}
+                        className="px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-pink-600 hover:bg-pink-700 shadow-md hover:shadow-lg transition cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+                      >
+                        {isSavingOrder ? (
+                          <>
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            <span>儲存同步中...</span>
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>儲存並同步至資料庫</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </form>
+                </div>
               </div>
             )}
           </div>
@@ -1581,25 +1999,90 @@ export default function AdminPage() {
                 <div className="lg:col-span-2 border border-slate-200 rounded-2xl p-6 flex flex-col justify-between">
                   {selectedMessage ? (
                     <div>
-                      <div className="flex justify-between items-start pb-4 border-b border-slate-100 mb-4">
+                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pb-4 border-b border-slate-100 mb-4">
                         <div>
-                          <h3 className="font-bold text-base text-slate-900">
-                            {selectedMessage.subject}
-                          </h3>
-                          <p className="text-xs text-slate-400 mt-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <h3 className="font-bold text-base text-slate-900">
+                              {selectedMessage.subject}
+                            </h3>
+                            <span
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                                selectedMessage.status === 'replied'
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : 'bg-rose-100 text-rose-800'
+                              }`}
+                            >
+                              {selectedMessage.status === 'replied' ? '已回覆' : '未處理'}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-400">
                             寄件人：{selectedMessage.sender} ({selectedMessage.email}) · 分類：
-                            {selectedMessage.category}
+                            {selectedMessage.category || '一般諮詢'}
                           </p>
                         </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setEditingMessage({ ...selectedMessage })}
+                            className="px-2.5 py-1 text-xs font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg transition cursor-pointer flex items-center gap-1 shadow-sm"
+                            title="編輯此案件主旨、內容與寄件資訊"
+                          >
+                            <Edit className="w-3.5 h-3.5 text-blue-600" />
+                            <span>編輯案件</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteMessage(selectedMessage.id)}
+                            className="px-2.5 py-1 text-xs font-bold text-rose-600 bg-white border border-rose-200 hover:bg-rose-50 rounded-lg transition cursor-pointer flex items-center gap-1 shadow-sm"
+                            title="自資料庫永久刪除此筆粉絲諮詢"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>刪除案件</span>
+                          </button>
+                        </div>
                       </div>
+
                       <div className="text-sm text-slate-700 leading-relaxed bg-slate-50 p-4 rounded-xl border border-slate-100 mb-6">
+                        <span className="block text-[11px] font-bold text-slate-400 mb-1">
+                          粉絲提問內容：
+                        </span>
                         {selectedMessage.content}
                       </div>
 
                       {selectedMessage.reply_content && (
-                        <div className="text-sm text-emerald-800 bg-emerald-50 p-4 rounded-xl border border-emerald-200 mb-6">
-                          <span className="font-bold block mb-1">已寄出之回覆內容：</span>
-                          {selectedMessage.reply_content}
+                        <div className="bg-emerald-50/70 p-4 rounded-xl border border-emerald-200 mb-6">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="font-bold text-xs text-emerald-900 flex items-center gap-1.5">
+                              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                              已寄出之官方回覆：
+                            </span>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setReplyContent(selectedMessage.reply_content || '')
+                                  setMessage('💡 已將回覆內容帶入下方輸入框，修改後點擊發送即可更新！')
+                                }}
+                                className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 bg-white px-2 py-0.5 rounded border border-emerald-200 hover:bg-emerald-100/50 transition cursor-pointer flex items-center gap-1"
+                                title="將回覆內容帶回輸入框重新編輯"
+                              >
+                                <Edit className="w-3 h-3" />
+                                <span>編輯回覆</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteReply(selectedMessage.id)}
+                                className="text-[11px] font-bold text-rose-600 hover:text-rose-800 bg-white px-2 py-0.5 rounded border border-rose-200 hover:bg-rose-50 transition cursor-pointer flex items-center gap-1"
+                                title="清空回覆並將案件重設為未處理"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                                <span>刪除回覆</span>
+                              </button>
+                            </div>
+                          </div>
+                          <div className="text-sm text-emerald-950 whitespace-pre-wrap leading-relaxed">
+                            {selectedMessage.reply_content}
+                          </div>
                         </div>
                       )}
 
@@ -1630,6 +2113,153 @@ export default function AdminPage() {
                       請從左側點選一封信件進行檢視與回覆
                     </div>
                   )}
+                </div>
+              </div>
+            )}
+
+            {/* 編輯諮詢案 Modal */}
+            {editingMessage && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+                <div className="bg-white rounded-3xl max-w-xl w-full p-6 sm:p-8 shadow-2xl border border-slate-100 space-y-5">
+                  <div className="flex justify-between items-center pb-4 border-b border-slate-100">
+                    <div>
+                      <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                        <Mail className="w-5 h-5 text-pink-600" />
+                        編輯粉絲諮詢案件
+                      </h3>
+                      <p className="text-xs text-slate-400 font-mono mt-0.5">
+                        案件編號：#{editingMessage.id}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setEditingMessage(null)}
+                      className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  <form onSubmit={handleSaveMessage} className="space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          寄件人姓名 / 暱稱
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={editingMessage.sender || ''}
+                          onChange={(e) =>
+                            setEditingMessage({ ...editingMessage, sender: e.target.value })
+                          }
+                          className="w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm focus:border-pink-500 focus:ring-1 focus:ring-pink-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          電子郵件 (Email)
+                        </label>
+                        <input
+                          type="email"
+                          required
+                          value={editingMessage.email || ''}
+                          onChange={(e) =>
+                            setEditingMessage({ ...editingMessage, email: e.target.value })
+                          }
+                          className="w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm focus:border-pink-500 focus:ring-1 focus:ring-pink-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          問題分類
+                        </label>
+                        <input
+                          type="text"
+                          value={editingMessage.category || ''}
+                          onChange={(e) =>
+                            setEditingMessage({ ...editingMessage, category: e.target.value })
+                          }
+                          placeholder="例如：投票規則、周邊商城、帳號問題"
+                          className="w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm focus:border-pink-500 focus:ring-1 focus:ring-pink-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          案件處理狀態
+                        </label>
+                        <select
+                          value={editingMessage.status || 'unread'}
+                          onChange={(e) =>
+                            setEditingMessage({ ...editingMessage, status: e.target.value })
+                          }
+                          className="w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm focus:border-pink-500 focus:ring-1 focus:ring-pink-500 bg-white"
+                        >
+                          <option value="unread">未處理 (unread)</option>
+                          <option value="replied">已回覆 (replied)</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        諮詢主旨
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={editingMessage.subject || ''}
+                        onChange={(e) =>
+                          setEditingMessage({ ...editingMessage, subject: e.target.value })
+                        }
+                        className="w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm focus:border-pink-500 focus:ring-1 focus:ring-pink-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        諮詢詳細內容
+                      </label>
+                      <textarea
+                        rows={4}
+                        required
+                        value={editingMessage.content || ''}
+                        onChange={(e) =>
+                          setEditingMessage({ ...editingMessage, content: e.target.value })
+                        }
+                        className="w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm focus:border-pink-500 focus:ring-1 focus:ring-pink-500"
+                      />
+                    </div>
+
+                    <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setEditingMessage(null)}
+                        className="px-5 py-2.5 rounded-xl text-xs font-bold text-slate-600 bg-white border border-slate-300 hover:bg-slate-50 transition cursor-pointer"
+                      >
+                        取消
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isSavingMessage}
+                        className="px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-pink-600 hover:bg-pink-700 shadow-md hover:shadow-lg transition cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+                      >
+                        {isSavingMessage ? (
+                          <>
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            <span>儲存同步中...</span>
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>儲存並同步至資料庫</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </form>
                 </div>
               </div>
             )}

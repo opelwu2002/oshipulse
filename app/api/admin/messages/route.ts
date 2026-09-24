@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || "";
 const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
@@ -13,12 +16,19 @@ export async function GET() {
       .order("created_at", { ascending: false });
 
     if (error) {
+      console.error("[Messages GET Error]:", error);
       const isMissing = error.code === "PGRST205" || error.message.includes("does not exist");
-      return NextResponse.json({ success: false, tableMissing: isMissing, message: error.message }, { status: 200 });
+      return NextResponse.json({ success: false, tableMissing: isMissing, message: error.message }, {
+        status: 200,
+        headers: { "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate" },
+      });
     }
 
-    return NextResponse.json({ success: true, data: data || [] });
+    return NextResponse.json({ success: true, data: data || [] }, {
+      headers: { "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate" },
+    });
   } catch (err: any) {
+    console.error("[Messages GET Exception]:", err);
     return NextResponse.json({ success: false, message: err.message }, { status: 500 });
   }
 }
@@ -26,18 +36,20 @@ export async function GET() {
 export async function PUT(request: Request) {
   try {
     const body = await request.json();
-    const { id, status, reply_content } = body;
+    const { id, subject, category, sender, email, content, status, reply_content } = body;
 
     if (!id) {
       return NextResponse.json({ success: false, message: "缺少訊息 ID" }, { status: 400 });
     }
 
-    const updatePayload: any = {
-      status: status || "replied",
-    };
-    if (reply_content !== undefined) {
-      updatePayload.reply_content = reply_content;
-    }
+    const updatePayload: any = {};
+    if (subject !== undefined) updatePayload.subject = subject.trim();
+    if (category !== undefined) updatePayload.category = category.trim();
+    if (sender !== undefined) updatePayload.sender = sender.trim();
+    if (email !== undefined) updatePayload.email = email.trim();
+    if (content !== undefined) updatePayload.content = content.trim();
+    if (status !== undefined) updatePayload.status = status;
+    if (reply_content !== undefined) updatePayload.reply_content = reply_content;
 
     const { data, error } = await supabaseAdmin
       .from("messages")
@@ -46,11 +58,43 @@ export async function PUT(request: Request) {
       .select();
 
     if (error) {
+      console.error("[Messages PUT Error]:", error);
       return NextResponse.json({ success: false, message: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, item: data?.[0] });
+    return NextResponse.json({ success: true, item: data?.[0] }, {
+      headers: { "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate" },
+    });
   } catch (err: any) {
+    console.error("[Messages PUT Exception]:", err);
+    return NextResponse.json({ success: false, message: err.message }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get("id");
+
+    if (!id) {
+      return NextResponse.json({ success: false, message: "缺少要刪除的訊息 ID" }, { status: 400 });
+    }
+
+    const { error } = await supabaseAdmin
+      .from("messages")
+      .delete()
+      .eq("id", id);
+
+    if (error) {
+      console.error("[Messages DELETE Error]:", error);
+      return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true, message: `客服訊息 ${id} 已成功刪除` }, {
+      headers: { "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate" },
+    });
+  } catch (err: any) {
+    console.error("[Messages DELETE Exception]:", err);
     return NextResponse.json({ success: false, message: err.message }, { status: 500 });
   }
 }
