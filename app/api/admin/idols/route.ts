@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || "";
 const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
@@ -13,8 +16,12 @@ export async function GET() {
       .order("votes", { ascending: false });
 
     if (error) {
+      console.error("[Supabase Idols GET Error]:", error);
       const isMissing = error.code === "PGRST205" || error.message.includes("does not exist");
-      return NextResponse.json({ success: false, tableMissing: isMissing, message: error.message }, { status: 200 });
+      return NextResponse.json({ success: false, tableMissing: isMissing, message: error.message }, {
+        status: 200,
+        headers: { "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate" },
+      });
     }
 
     // 🛡️ 屬性標準化：同時賦予 avatar、avatar_url、image_url，保證前後台各元件均能直接讀取網路圖片
@@ -29,8 +36,11 @@ export async function GET() {
       };
     });
 
-    return NextResponse.json({ success: true, data: standardized });
+    return NextResponse.json({ success: true, data: standardized }, {
+      headers: { "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate" },
+    });
   } catch (err: any) {
+    console.error("[API Idols GET Exception]:", err);
     return NextResponse.json({ success: false, message: err.message }, { status: 500 });
   }
 }
@@ -44,55 +54,43 @@ export async function PUT(request: Request) {
       return NextResponse.json({ success: false, message: "缺少偶像 ID" }, { status: 400 });
     }
 
-    const finalAvatar = avatar || avatar_url || image_url || headshot_url;
+    const finalAvatar = (avatar || avatar_url || image_url || headshot_url || "").trim();
 
+    // 精準對齊 Supabase idols 資料表真實欄位 (id, name, work, category, avatar, status, votes, match_history, updated_at)
     const updatePayload: any = {
+      id: id,
       updated_at: new Date().toISOString(),
     };
-    if (name !== undefined) updatePayload.name = name;
-    if (work !== undefined) updatePayload.work = work;
-    if (category !== undefined) updatePayload.category = category;
-    if (finalAvatar !== undefined) updatePayload.avatar = finalAvatar;
+    if (name !== undefined) updatePayload.name = name.trim();
+    if (work !== undefined) updatePayload.work = work.trim();
+    if (category !== undefined) updatePayload.category = category.trim();
+    if (finalAvatar !== "") updatePayload.avatar = finalAvatar;
     if (status !== undefined) updatePayload.status = status;
     if (votes !== undefined) updatePayload.votes = Number(votes) || 0;
     if (match_history !== undefined) updatePayload.match_history = match_history;
 
-    // 嘗試完整寫入 Supabase idols 資料表
+    // 執行真實寫入 (使用 upsert 確保即使此 ID 為新項目亦能 100% 成功入庫)
     let { data, error } = await supabaseAdmin
       .from("idols")
-      .update(updatePayload)
-      .eq("id", id)
+      .upsert(updatePayload, { onConflict: "id" })
       .select();
 
-    // 防呆相容 1：若資料庫是 avatar_url 而非 avatar
-    if (error && (error.code === "PGRST204" || error.message.includes("avatar"))) {
-      const fallbackPayload = { ...updatePayload };
-      delete fallbackPayload.avatar;
-      fallbackPayload.avatar_url = finalAvatar;
-      const fallbackResult = await supabaseAdmin
-        .from("idols")
-        .update(fallbackPayload)
-        .eq("id", id)
-        .select();
-      data = fallbackResult.data;
-      error = fallbackResult.error;
-    }
-
-    // 防呆相容 2：若資料庫尚未手動新增 match_history 欄位導致報錯，降級排除該欄位重新更新
+    // 防呆相容 1：若資料庫尚未手動新增 match_history 欄位導致報錯，降級排除該欄位重新更新
     if (error && (error.code === "PGRST204" || error.message.includes("match_history"))) {
+      console.warn("[Idols PUT] match_history column missing, retrying without it...");
       const fallbackPayload = { ...updatePayload };
       delete fallbackPayload.match_history;
       const fallbackResult = await supabaseAdmin
         .from("idols")
-        .update(fallbackPayload)
-        .eq("id", id)
+        .upsert(fallbackPayload, { onConflict: "id" })
         .select();
       data = fallbackResult.data;
       error = fallbackResult.error;
     }
 
     if (error) {
-      return NextResponse.json({ success: false, message: error.message }, { status: 500 });
+      console.error("[Supabase Idols PUT Error]:", error);
+      return NextResponse.json({ success: false, message: `資料庫寫入失敗: ${error.message} (${error.code || '無代碼'})` }, { status: 500 });
     }
 
     const resultIdol = data?.[0]
@@ -104,8 +102,11 @@ export async function PUT(request: Request) {
         }
       : null;
 
-    return NextResponse.json({ success: true, idol: resultIdol });
+    return NextResponse.json({ success: true, idol: resultIdol }, {
+      headers: { "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate" },
+    });
   } catch (err: any) {
-    return NextResponse.json({ success: false, message: err.message }, { status: 500 });
+    console.error("[API Idols PUT Exception]:", err);
+    return NextResponse.json({ success: false, message: `伺服器異常: ${err.message}` }, { status: 500 });
   }
 }

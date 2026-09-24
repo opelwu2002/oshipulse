@@ -32,6 +32,7 @@ import {
   Info,
 } from 'lucide-react'
 import Link from 'next/link'
+import { supabase } from '@/lib/supabase'
 
 export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<
@@ -213,15 +214,39 @@ export default function AdminPage() {
   async function fetchIdols() {
     setLoading(true)
     try {
-      const res = await fetch('/api/admin/idols')
+      // 1. 優先嘗試 Supabase 用戶端直連讀取，防範任何中繼快取
+      const { data: dbData, error: dbError } = await supabase
+        .from('idols')
+        .select('*')
+        .order('votes', { ascending: false })
+
+      if (!dbError && dbData && dbData.length > 0) {
+        const standardized = dbData.map((idol: any) => {
+          const img = idol.avatar || idol.avatar_url || idol.image_url || idol.headshot_url || ''
+          return {
+            ...idol,
+            avatar: img,
+            avatar_url: img,
+            image_url: img,
+          }
+        })
+        setIdolsList(standardized)
+        return
+      }
+
+      // 2. 備援後端 API 讀取 (加上 no-store 與動態時間戳防止任何快取)
+      const res = await fetch(`/api/admin/idols?t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate' },
+      })
       const json = await res.json()
       if (json.tableMissing) {
         setTableMissingWarning('idols')
       } else if (json.success) {
         setIdolsList(json.data || [])
       }
-    } catch (e) {
-      console.error(e)
+    } catch (e: any) {
+      console.error('抓取偶像資料庫失敗:', e)
     } finally {
       setLoading(false)
     }
@@ -230,18 +255,33 @@ export default function AdminPage() {
   async function handleToggleIdolStatus(id: string, currentStatus: string) {
     const nextStatus = currentStatus === 'active' ? 'archived' : 'active'
     try {
+      // 1. 優先透過 Supabase 用戶端直連更新
+      const { error: dbError } = await supabase
+        .from('idols')
+        .update({ status: nextStatus, updated_at: new Date().toISOString() })
+        .eq('id', id)
+
+      // 2. 備援管理員 API 更新
       const res = await fetch('/api/admin/idols', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, status: nextStatus }),
       })
       const json = await res.json()
-      if (json.success) {
-        setMessage(`偶像狀態已更新為：${nextStatus === 'active' ? '活躍中' : '已封存'}`)
-        fetchIdols()
+
+      if (dbError && !json.success) {
+        throw new Error(dbError.message || json.message)
       }
+
+      // 3. 樂觀更新前端狀態並重新拉取
+      setIdolsList((prev) =>
+        prev.map((i) => (i.id === id ? { ...i, status: nextStatus } : i))
+      )
+      setMessage(`偶像狀態已更新為：${nextStatus === 'active' ? '活躍中' : '已封存'}`)
+      fetchIdols()
     } catch (e: any) {
-      alert(e.message)
+      console.error('切換偶像狀態失敗:', e)
+      alert('切換狀態失敗：' + e.message)
     }
   }
 
@@ -249,22 +289,97 @@ export default function AdminPage() {
     e.preventDefault()
     if (!editingIdol) return
     setIsSavingIdol(true)
+    setMessage('')
+
     try {
-      const res = await fetch('/api/admin/idols', {
+      // 1. 精準對齊 Supabase 資料庫真實欄位（資料庫立繪欄位名稱為 avatar）
+      const cleanPayload: any = {
+        id: editingIdol.id,
+        name: (editingIdol.name || '').trim(),
+        work: (editingIdol.work || '').trim(),
+        category: (editingIdol.category || '').trim(),
+        avatar: (editingIdol.avatar || editingIdol.avatar_url || editingIdol.image_url || editingIdol.headshot_url || '').trim(),
+        status: editingIdol.status || 'active',
+        votes: Number(editingIdol.votes) || 0,
+        updated_at: new Date().toISOString(),
+      }
+
+      if (editingIdol.match_history !== undefined) {
+        cleanPayload.match_history = (editingIdol.match_history || '').trim()
+      }
+
+      console.log('準備真實寫入 Supabase idols 資料表:', cleanPayload)
+
+      // 2. 雙重執行真實寫入：
+      // (A) Supabase 用戶端直連 upsert
+      let directSuccess = false
+      let directErrorMsg = ''
+      try {
+        let { data, error } = await supabase
+          .from('idols')
+          .upsert(cleanPayload, { onConflict: 'id' })
+          .select()
+
+        // 防呆相容：若資料庫尚未建立 match_history 欄位導致報錯，移除該欄位再次嘗試
+        if (error && (error.code === 'PGRST204' || error.message.includes('match_history'))) {
+          console.warn('Supabase idols 資料表尚未含有 match_history 欄位，進行降級寫入...')
+          const fallbackPayload = { ...cleanPayload }
+          delete fallbackPayload.match_history
+          const retry = await supabase
+            .from('idols')
+            .upsert(fallbackPayload, { onConflict: 'id' })
+            .select()
+          data = retry.data
+          error = retry.error
+        }
+
+        if (!error && data && data.length > 0) {
+          directSuccess = true
+          console.log('Supabase 用戶端直連寫入成功:', data[0])
+        } else if (error) {
+          directErrorMsg = error.message
+        }
+      } catch (err: any) {
+        directErrorMsg = err.message
+      }
+
+      // (B) 管理員 API 伺服器端寫入 (使用 service_role，確保持久化)
+      const res = await fetch(`/api/admin/idols?t=${Date.now()}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(editingIdol),
+        body: JSON.stringify(cleanPayload),
       })
       const json = await res.json()
-      if (json.success) {
-        setMessage(`✅ 偶像【${editingIdol.name}】資料已成功同步更新至資料庫！`)
-        setEditingIdol(null)
-        fetchIdols()
-      } else {
-        alert(json.message || '更新失敗')
+
+      // 若兩者皆失敗，拋出明確錯誤，絕不假報成功！
+      if (!directSuccess && !json.success) {
+        const finalError = json.message || directErrorMsg || '寫入資料庫失敗'
+        throw new Error(finalError)
       }
+
+      // 3. 樂觀同步前端畫面（消除任何網路延遲的視覺抖動）
+      setIdolsList((prev) =>
+        prev.map((item) =>
+          item.id === cleanPayload.id
+            ? {
+                ...item,
+                ...cleanPayload,
+                avatar_url: cleanPayload.avatar,
+                image_url: cleanPayload.avatar,
+              }
+            : item
+        )
+      )
+
+      setMessage(`✅ 偶像【${cleanPayload.name}】資料已真實同步寫入 Supabase 資料庫！`)
+      setEditingIdol(null)
+
+      // 4. 立即從 Supabase 重新拉取最新資料 (Re-fetch)
+      await fetchIdols()
     } catch (e: any) {
-      alert(e.message)
+      console.error('儲存至 Supabase 資料庫發生錯誤:', e)
+      alert(`❌ 儲存失敗：${e.message || '無法寫入資料庫，請檢查資料欄位或網路連線'}`)
+      setMessage(`❌ 儲存失敗：${e.message}`)
     } finally {
       setIsSavingIdol(false)
     }
