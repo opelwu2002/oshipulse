@@ -5,7 +5,7 @@
  */
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
-import { Idol, Product, Battle, Collab, ContactMessage, EventData } from "./supabase/types";
+import { Idol, Product, Battle, Collab, ContactMessage, EventData, Profile } from "./supabase/types";
 import {
   INITIAL_IDOLS,
   INITIAL_BATTLES,
@@ -14,6 +14,90 @@ import {
   INITIAL_MESSAGES,
 } from "./mockData";
 import { soundEngine } from "./audio";
+
+
+export const INITIAL_PROFILES: Profile[] = [
+  {
+    id: "usr-1",
+    username: "hunter_jinwoo_vip",
+    full_name: "林晨宇",
+    nickname: "暗影獵人",
+    birth_date: "1998-06-12",
+    phone: "0912-345-678",
+    address: "台北市大安區信義路四段100號",
+    favorite_idol: "成振宇 (Sung Jinwoo)",
+    avatar_url: "/images/idols/sung-jinwoo.jpg",
+    role: "user",
+    referral_code: "JINWOO2026",
+    bonus_votes: 120,
+    created_at: "2026-01-10T10:00:00Z",
+    updated_at: "2026-03-01T15:30:00Z",
+  },
+  {
+    id: "usr-2",
+    username: "gojo_domain_master",
+    full_name: "張無限",
+    nickname: "六眼悟推",
+    birth_date: "2000-12-07",
+    phone: "0923-456-789",
+    address: "新北市板橋區文化路一段20號",
+    favorite_idol: "五條悟",
+    avatar_url: "/images/idols/gojo-satoru.jpg",
+    role: "user",
+    referral_code: "INFINITY5",
+    bonus_votes: 85,
+    created_at: "2026-01-15T14:20:00Z",
+    updated_at: "2026-03-05T09:10:00Z",
+  },
+  {
+    id: "usr-3",
+    username: "golden_jk_army",
+    full_name: "陳語婕",
+    nickname: "黃金阿米",
+    birth_date: "2002-09-01",
+    phone: "0934-567-890",
+    address: "台中市西區公益路68號",
+    favorite_idol: "田柾國 (Jung Kook)",
+    avatar_url: "/images/idols/jungkook.jpg",
+    role: "user",
+    referral_code: "SEVEN777",
+    bonus_votes: 210,
+    created_at: "2026-01-20T18:00:00Z",
+    updated_at: "2026-03-10T12:00:00Z",
+  },
+  {
+    id: "usr-4",
+    username: "wonyoung_lucky_dive",
+    full_name: "黃維琪",
+    nickname: "Lucky Vicky",
+    birth_date: "2004-08-31",
+    phone: "0955-678-901",
+    address: "高雄市左營區博愛二路777號",
+    favorite_idol: "張員瑛 (Wonyoung)",
+    avatar_url: "/images/idols/wonyoung.jpg",
+    role: "user",
+    referral_code: "VICKY100",
+    bonus_votes: 160,
+    created_at: "2026-02-01T11:30:00Z",
+    updated_at: "2026-03-12T16:45:00Z",
+  },
+  {
+    id: "usr-5",
+    username: "frieren_magic_fan",
+    full_name: "李欣穎",
+    nickname: "葬送的勇者隊",
+    birth_date: "1999-04-20",
+    phone: "0966-789-012",
+    address: "台南市中西區西門路一段658號",
+    favorite_idol: "芙莉蓮 (Frieren)",
+    avatar_url: "/images/idols/frieren.jpg",
+    role: "user",
+    referral_code: "ZOLTRAAK",
+    bonus_votes: 95,
+    created_at: "2026-02-10T08:15:00Z",
+    updated_at: "2026-03-15T11:20:00Z",
+  },
+];
 
 export const INITIAL_EVENTS: EventData[] = [
   {
@@ -130,6 +214,15 @@ interface AppState {
   isVibrationEnabled: boolean;
   toggleSound: () => void;
   toggleVibration: () => void;
+
+
+  // 平台會員與粉絲管理
+  currentMember: Profile | null;
+  setCurrentMember: (profile: Profile | null) => void;
+  members: Profile[];
+  addMember: (member: Omit<Profile, "id" | "created_at">) => void;
+  updateMember: (id: string, updates: Partial<Profile>) => void;
+  deleteMember: (id: string) => void;
 
   // 角色與身分 (支援展示切換)
   currentUserRole: "user" | "admin";
@@ -278,6 +371,38 @@ export const useAppStore = create<AppState>()(
       },
       toggleVibration: () => set((state) => ({ isVibrationEnabled: !state.isVibrationEnabled })),
 
+
+      // 平台會員狀態
+      currentMember: INITIAL_PROFILES[0],
+      setCurrentMember: (profile) => set({ currentMember: profile }),
+      members: INITIAL_PROFILES,
+      addMember: (newMem) => {
+        const profile: Profile = {
+          ...newMem,
+          id: "usr-" + Date.now(),
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+        set((state) => ({ members: [profile, ...state.members] }));
+      },
+      updateMember: (id, updates) => {
+        set((state) => {
+          const updated = state.members.map((m) =>
+            m.id === id ? { ...m, ...updates, updated_at: new Date().toISOString() } : m
+          );
+          const current = state.currentMember?.id === id
+            ? { ...state.currentMember, ...updates, updated_at: new Date().toISOString() }
+            : state.currentMember;
+          return { members: updated, currentMember: current };
+        });
+      },
+      deleteMember: (id) => {
+        set((state) => ({
+          members: state.members.filter((m) => m.id !== id),
+          currentMember: state.currentMember?.id === id ? null : state.currentMember,
+        }));
+      },
+
       // 角色管理與贈票
       currentUserRole: "admin", // 預設提供管理者展示模式以利開箱測試後台
       setUserRole: (role) => set({ currentUserRole: role }),
@@ -366,6 +491,8 @@ export const useAppStore = create<AppState>()(
           products: INITIAL_PRODUCTS,
           messages: INITIAL_MESSAGES,
           events: INITIAL_EVENTS,
+          members: INITIAL_PROFILES,
+          currentMember: INITIAL_PROFILES[0],
           dailyMissions: INITIAL_MISSIONS,
           hasClaimedDailyBonus: false,
         });
@@ -537,6 +664,8 @@ export const useAppStore = create<AppState>()(
         products: state.products,
         messages: state.messages,
         events: state.events,
+        members: state.members,
+        currentMember: state.currentMember,
         dailyMissions: state.dailyMissions,
         hasClaimedDailyBonus: state.hasClaimedDailyBonus,
         dailyGrandRewardClaimed: state.dailyGrandRewardClaimed,
@@ -559,6 +688,12 @@ export const useAppStore = create<AppState>()(
           }
           if (!state.events || state.events.length === 0) {
             state.events = INITIAL_EVENTS;
+          }
+          if (!state.members || state.members.length === 0) {
+            state.members = INITIAL_PROFILES;
+          }
+          if (state.currentMember === undefined) {
+            state.currentMember = INITIAL_PROFILES[0];
           }
         }
       },

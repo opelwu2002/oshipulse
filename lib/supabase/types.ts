@@ -36,12 +36,19 @@ export interface OfficialLink {
 export interface Profile {
   id: string;
   username: string;
+  full_name?: string | null;
+  nickname?: string | null;
+  birth_date?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  favorite_idol?: string | null;
   avatar_url?: string | null;
   role: UserRole;
   referral_code: string;
   referred_by?: string | null;
   bonus_votes: number;
   created_at: string;
+  updated_at?: string;
 }
 
 export interface TimelineMilestone {

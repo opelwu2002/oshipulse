@@ -1,28 +1,31 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { supabase } from "@/lib/supabase";
 import { useAppStore } from "@/lib/store";
 import {
   Sparkles,
   ShoppingBag,
   Volume2,
   VolumeX,
-  HeartHandshake,
   Share2,
   Shield,
   Menu,
   X,
   Flame,
-  Swords,
-  Gift,
-  Compass,
+  User,
+  LogOut,
+  LogIn,
+  UserPlus,
 } from "lucide-react";
 
 export default function Navbar() {
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [supabaseUser, setSupabaseUser] = useState<any>(null);
+  const [supabaseProfile, setSupabaseProfile] = useState<any>(null);
 
   const {
     openCart,
@@ -32,11 +35,72 @@ export default function Navbar() {
     openDonateModal,
     openShareModal,
     bonusVotes,
-    currentUserRole,
-    setUserRole,
+    currentMember,
+    setCurrentMember,
   } = useAppStore();
 
+  useEffect(() => {
+    checkUser();
+
+    // 監聽 Supabase 驗證狀態變化
+    const { data: authListener } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (session?.user) {
+          setSupabaseUser(session.user);
+          const { data } = await supabase
+            .from("profiles")
+            .select("*")
+            .eq("id", session.user.id)
+            .single();
+          if (data) setSupabaseProfile(data);
+        } else {
+          setSupabaseUser(null);
+          setSupabaseProfile(null);
+        }
+      }
+    );
+
+    return () => {
+      authListener?.subscription?.unsubscribe();
+    };
+  }, []);
+
+  async function checkUser() {
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (session) {
+        setSupabaseUser(session.user);
+        const { data } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", session.user.id)
+          .single();
+        if (data) setSupabaseProfile(data);
+      }
+    } catch (err) {
+      // 離線或無 Supabase 設定時優雅降級
+    }
+  }
+
+  async function handleSignOut() {
+    try {
+      await supabase.auth.signOut();
+    } catch (e) {
+      // 離線降級處理
+    }
+    setSupabaseUser(null);
+    setSupabaseProfile(null);
+    setCurrentMember(null);
+  }
+
+  // 雙軌身分支援：優先使用 Supabase 登入者，若無則連動 Local Store 展示會員
+  const activeUser = supabaseUser || (currentMember ? { id: currentMember.id } : null);
+  const activeProfile = supabaseProfile || currentMember;
+
   const navLinks = [
+    { label: "首頁", href: "/" },
     { label: "聲量名人堂", href: "/idols" },
     { label: "巔峰對決", href: "/battles" },
     { label: "聯名許願池", href: "/collabs" },
@@ -45,40 +109,48 @@ export default function Navbar() {
   ];
 
   return (
-    <header className="sticky top-0 z-40 w-full bg-white/95 backdrop-blur-md border-b border-slate-100 transition-all">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
-        {/* Logo */}
-        <Link href="/" className="flex items-center gap-2.5 shrink-0 group">
-          <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-cyber-rose via-rose-500 to-cyber-violet flex items-center justify-center text-white shadow-md shadow-cyber-rose/25 group-hover:scale-105 transition-transform">
+    <header className="bg-white border-b border-gray-100 shadow-sm sticky top-0 z-50">
+      {/* 🌟 偶像專屬打氣問候橫幅 (登入後顯示) */}
+      {activeUser && (
+        <div className="bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-600 text-white text-xs sm:text-sm py-1.5 px-4 text-center font-medium flex flex-wrap items-center justify-center gap-2 shadow-xs animate-fade-in">
+          <span>
+            ✨ 歡迎回來，{activeProfile?.nickname || activeProfile?.username || "熱情粉絲"}！
+          </span>
+          <span className="hidden sm:inline opacity-70">|</span>
+          <span className="bg-white/20 px-2 py-0.5 rounded-full font-bold">
+            🔥 您的本命【{activeProfile?.favorite_idol || "所有推角"}】今天也正在發光發熱，一起為他應援打氣吧！
+          </span>
+        </div>
+      )}
+
+      {/* 主導航列：加上隱藏捲軸的橫向滑動設定，徹底解決破版擠壓問題 */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-3 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+        
+        {/* Logo 區 (shrink-0 防止壓縮) */}
+        <Link href="/" className="flex items-center space-x-2 shrink-0 group">
+          <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-pink-500 via-purple-500 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-pink-500/20 group-hover:scale-105 transition-transform shrink-0">
             <Flame className="w-5 h-5 fill-white" />
           </div>
-          <div className="flex flex-col">
-            <div className="flex items-center gap-1">
-              <span className="text-lg font-black tracking-tight text-slate-900">
-                Oshi<span className="text-cyber-rose">Pulse</span>
-              </span>
-              <span className="text-[10px] font-bold text-cyber-violet bg-purple-50 px-1.5 py-0.5 rounded border border-purple-100">
-                推しパルス
-              </span>
-            </div>
-            <span className="text-[10px] text-slate-400 font-medium tracking-wide">
-              跨國偶像聲量競技場
+          <div className="flex flex-col shrink-0">
+            <span className="text-base sm:text-lg font-extrabold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent leading-tight whitespace-nowrap">
+              OshiPulse
+            </span>
+            <span className="text-[10px] text-slate-400 font-medium whitespace-nowrap hidden sm:block">
+              推しパルス · 粉絲全球應援中心
             </span>
           </div>
         </Link>
 
-        {/* 桌面端導航項目 */}
-        <nav className="hidden md:flex items-center gap-1 lg:gap-2">
+        {/* 桌面端導航連結 (shrink-0) */}
+        <nav className="hidden lg:flex items-center space-x-4 xl:space-x-6 text-sm font-medium text-gray-700 shrink-0">
           {navLinks.map((item) => {
             const isActive = pathname === item.href;
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                className={`px-3.5 py-2 text-sm font-bold rounded-xl transition-colors ${
-                  isActive
-                    ? "text-cyber-violet bg-purple-50"
-                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+                className={`hover:text-pink-600 transition whitespace-nowrap ${
+                  isActive ? "text-pink-600 font-bold" : ""
                 }`}
               >
                 {item.label}
@@ -87,38 +159,74 @@ export default function Navbar() {
           })}
         </nav>
 
-        <div className="flex items-center gap-2 sm:gap-2.5">
-          {/* 本機純前端離線模式指示器與一鍵同步 */}
+        {/* 右側操作區塊 (shrink-0 防止內部按鈕互擠) */}
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          
+          {/* 本機離線模式切換標籤 */}
           <button
             onClick={() => {
               useAppStore.getState().resetAllToInitial();
-              alert("已將全站偶像與動漫角色資料同步刷新為最新本機名冊！");
+              alert("已將全站偶像、動漫角色與會員資料同步重置為最新本機種子資料！");
             }}
-            className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition-all cursor-pointer"
-            title="點擊可刷新重置本機資料為最新動漫與企劃偶像名單"
+            className="hidden xl:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition-all cursor-pointer shrink-0 whitespace-nowrap"
+            title="點擊可重置本機展示資料庫"
           >
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span>本機離線模式</span>
+            <span>離線模式</span>
           </button>
 
-          {/* ⚙️ 後台管理入口 (緊鄰 Local Mode 徽章) */}
+          {/* ⚙️ 後台管理入口 */}
           <Link
             href="/admin"
-            className="hidden sm:flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 transition-all cursor-pointer"
-            title="前往 OshiPulse 企業級後台管理系統"
+            className="hidden md:inline-flex items-center gap-1 text-sm font-medium text-gray-700 hover:text-pink-600 transition shrink-0 whitespace-nowrap"
           >
-            <span>⚙️ 後台管理</span>
+            後台管理
           </Link>
 
-          {/* 擴散希望領票鈕 */}
+          {/* 💎 會員專區按鈕 (移除 flex-wrap，改用 flex-nowrap 與 shrink-0) */}
+          <div className="flex items-center flex-nowrap gap-2 justify-end shrink-0">
+            {!activeUser ? (
+              <>
+                <Link
+                  href="/member"
+                  className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-pink-600 hover:text-pink-700 border border-pink-200 rounded-full hover:bg-pink-50 transition shrink-0 whitespace-nowrap"
+                >
+                  🔐 會員登入
+                </Link>
+                <Link
+                  href="/member"
+                  className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white bg-pink-600 rounded-full hover:bg-pink-700 shadow-sm transition shrink-0 whitespace-nowrap"
+                >
+                  📝 註冊會員
+                </Link>
+              </>
+            ) : (
+              <>
+                <Link
+                  href="/member"
+                  className="px-3 py-1.5 text-xs sm:text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition shrink-0 whitespace-nowrap"
+                >
+                  ⚙️ 會員中心
+                </Link>
+                <button
+                  onClick={handleSignOut}
+                  className="px-3 py-1.5 text-xs sm:text-sm font-semibold text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition shrink-0 whitespace-nowrap"
+                >
+                  登出
+                </button>
+              </>
+            )}
+          </div>
+
+          {/* 擴散希望領票鈕 (優化手機版顯示) */}
           <button
             onClick={() => openShareModal()}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold text-cyber-rose bg-rose-50 hover:bg-rose-100 border border-rose-200 transition-all shadow-sm"
+            className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-full text-xs font-bold text-cyber-rose bg-rose-50 hover:bg-rose-100 border border-rose-200 transition-all shadow-2xs shrink-0 whitespace-nowrap"
             title="發動擴散希望領取能量票"
           >
             <Share2 className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">擴散希望</span>
-            <span className="bg-cyber-rose text-white text-[10px] px-1.5 py-0.2 rounded-full">
+            <span className="bg-cyber-rose text-white text-[10px] px-1.5 py-0.5 rounded-full shrink-0">
               +{bonusVotes}
             </span>
           </button>
@@ -127,34 +235,25 @@ export default function Navbar() {
           <button
             onClick={toggleSound}
             aria-label="切換音效"
-            className="p-2 text-slate-500 hover:text-slate-900 rounded-xl hover:bg-slate-100 transition-colors"
+            className="p-1.5 sm:p-2 text-slate-500 hover:text-slate-900 rounded-xl hover:bg-slate-100 transition-colors shrink-0"
             title={isSoundEnabled ? "音效已開啟" : "音效已靜音"}
           >
             {isSoundEnabled ? (
-              <Volume2 className="w-4 h-4 text-cyber-violet" />
+              <Volume2 className="w-4 h-4 text-cyber-violet shrink-0" />
             ) : (
-              <VolumeX className="w-4 h-4 text-slate-400" />
+              <VolumeX className="w-4 h-4 text-slate-400 shrink-0" />
             )}
-          </button>
-
-          {/* 伺服器能量贊助 */}
-          <button
-            onClick={openDonateModal}
-            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 transition-all shadow-sm"
-          >
-            <HeartHandshake className="w-3.5 h-3.5 text-amber-600" />
-            <span>能量贊助</span>
           </button>
 
           {/* 購物車按鈕 */}
           <button
             onClick={openCart}
-            className="relative p-2 text-slate-700 hover:text-cyber-rose rounded-xl hover:bg-slate-100 transition-colors"
+            className="relative p-1.5 sm:p-2 text-slate-700 hover:text-cyber-rose rounded-xl hover:bg-slate-100 transition-colors shrink-0"
             aria-label="開啟應援購物車"
           >
-            <ShoppingBag className="w-5 h-5" />
+            <ShoppingBag className="w-5 h-5 shrink-0" />
             {cartCount() > 0 && (
-              <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-cyber-rose text-[10px] font-black text-white shadow-sm">
+              <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-cyber-rose text-[10px] font-black text-white shadow-sm shrink-0">
                 {cartCount()}
               </span>
             )}
@@ -163,7 +262,7 @@ export default function Navbar() {
           {/* 行動端漢堡選單 */}
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="md:hidden p-2 text-slate-600 hover:text-slate-900 rounded-xl hover:bg-slate-100"
+            className="lg:hidden p-1.5 sm:p-2 text-slate-600 hover:text-slate-900 rounded-xl hover:bg-slate-100 shrink-0"
             aria-label="選單"
           >
             {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -173,7 +272,7 @@ export default function Navbar() {
 
       {/* 行動端展開式選單 */}
       {mobileMenuOpen && (
-        <div className="md:hidden border-t border-slate-100 bg-white p-4 space-y-2 animate-in slide-in-from-top-2">
+        <div className="lg:hidden border-t border-slate-100 bg-white p-4 space-y-2 animate-in slide-in-from-top-2 shadow-lg">
           {navLinks.map((item) => (
             <Link
               key={item.href}
@@ -184,21 +283,22 @@ export default function Navbar() {
               {item.label}
             </Link>
           ))}
-          <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
-            <button
-              onClick={() => {
-                openDonateModal();
-                setMobileMenuOpen(false);
-              }}
-              className="flex items-center gap-2 text-xs font-bold text-amber-800 bg-amber-50 px-3 py-2 rounded-xl border border-amber-200"
-            >
-              <HeartHandshake className="w-4 h-4 text-amber-600" />
-              <span>伺服器能量贊助</span>
-            </button>
+
+          <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
+            {!activeUser && (
+              <Link
+                href="/member"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center gap-1.5 text-xs font-bold text-pink-700 bg-pink-50 hover:bg-pink-100 px-3 py-2 rounded-xl border border-pink-200"
+              >
+                <User className="w-4 h-4 text-pink-600" />
+                <span>登入/註冊完整服務</span>
+              </Link>
+            )}
             <Link
               href="/admin"
               onClick={() => setMobileMenuOpen(false)}
-              className="flex items-center gap-1.5 text-xs font-bold text-slate-700 bg-slate-100 px-3 py-2 rounded-xl"
+              className="flex items-center gap-1.5 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 px-3 py-2 rounded-xl"
             >
               <Shield className="w-4 h-4 text-slate-600" />
               <span>後台管理</span>
