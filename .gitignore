@@ -1,2 +1,19 @@
-node_modules
-node_modules
+# 依賴套件
+/node_modules
+/.pnp
+.pnp.js
+
+# Next.js 編譯與快取產物
+/.next/
+/out/
+
+# 環境變數與機敏設定
+.env*.local
+.env
+
+# TypeScript 建置暫存
+*.tsbuildinfo
+
+# 作業系統暫存檔
+.DS_Store
+Thumbs.db
