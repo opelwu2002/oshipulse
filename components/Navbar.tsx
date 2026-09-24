@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useAppStore } from "@/lib/store";
 import {
@@ -23,9 +23,11 @@ import {
 
 export default function Navbar() {
   const pathname = usePathname();
+  const router = useRouter();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [supabaseUser, setSupabaseUser] = useState<any>(null);
   const [supabaseProfile, setSupabaseProfile] = useState<any>(null);
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
 
   const {
     openCart,
@@ -41,6 +43,7 @@ export default function Navbar() {
 
   useEffect(() => {
     checkUser();
+    checkAdminAuth();
 
     // 監聽 Supabase 驗證狀態變化
     const { data: authListener } = supabase.auth.onAuthStateChange(
@@ -63,7 +66,14 @@ export default function Navbar() {
     return () => {
       authListener?.subscription?.unsubscribe();
     };
-  }, []);
+  }, [pathname]);
+
+  function checkAdminAuth() {
+    if (typeof window !== "undefined") {
+      const isAuth = sessionStorage.getItem("oshipulse_admin_auth") === "true";
+      setIsAdminAuthenticated(isAuth);
+    }
+  }
 
   async function checkUser() {
     try {
@@ -99,6 +109,19 @@ export default function Navbar() {
   const activeUser = supabaseUser || (currentMember ? { id: currentMember.id } : null);
   const activeProfile = supabaseProfile || currentMember;
 
+  // 智能計算後台管理目標路徑：已認證直達 /admin，未認證導向 /admin/login
+  const adminTargetPath = isAdminAuthenticated ? "/admin" : "/admin/login";
+
+  // 後台管理點擊導航事件 (雙重保證必定觸發跳轉，杜絕事件攔截或死連結)
+  const handleAdminNavigation = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (typeof window !== "undefined") {
+      const isAuth = sessionStorage.getItem("oshipulse_admin_auth") === "true";
+      const target = isAuth ? "/admin" : "/admin/login";
+      router.push(target);
+    }
+  };
+
   const navLinks = [
     { label: "首頁", href: "/" },
     { label: "聲量名人堂", href: "/idols" },
@@ -123,10 +146,10 @@ export default function Navbar() {
         </div>
       )}
 
-      {/* 主導航列：加上隱藏捲軸的橫向滑動設定，徹底解決破版擠壓問題 */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-3 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+      {/* 主導航列 */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-3">
         
-        {/* Logo 區 (shrink-0 防止壓縮) */}
+        {/* Logo 區 */}
         <Link href="/" className="flex items-center space-x-2 shrink-0 group">
           <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-pink-500 via-purple-500 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-pink-500/20 group-hover:scale-105 transition-transform shrink-0">
             <Flame className="w-5 h-5 fill-white" />
@@ -141,7 +164,7 @@ export default function Navbar() {
           </div>
         </Link>
 
-        {/* 桌面端導航連結 (shrink-0) */}
+        {/* 桌面端導航連結 */}
         <nav className="hidden lg:flex items-center space-x-4 xl:space-x-6 text-sm font-medium text-gray-700 shrink-0">
           {navLinks.map((item) => {
             const isActive = pathname === item.href;
@@ -159,10 +182,10 @@ export default function Navbar() {
           })}
         </nav>
 
-        {/* 右側操作區塊 (shrink-0 防止內部按鈕互擠) */}
-        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+        {/* 右側操作區塊 */}
+        <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
           
-          {/* 本機離線模式切換標籤 */}
+          {/* 本機離線模式重置按鈕 */}
           <button
             onClick={() => {
               useAppStore.getState().resetAllToInitial();
@@ -175,27 +198,30 @@ export default function Navbar() {
             <span>離線模式</span>
           </button>
 
-          {/* ⚙️ 後台管理入口 */}
+          {/* 🛡️ 後台管理入口按鈕 (桌機/筆電常駐顯示，帶有盾牌圖示與高對比膠囊樣式) */}
           <Link
-            href="/admin"
-            className="hidden md:inline-flex items-center gap-1 text-sm font-medium text-gray-700 hover:text-pink-600 transition shrink-0 whitespace-nowrap"
+            href={adminTargetPath}
+            onClick={handleAdminNavigation}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs sm:text-sm font-bold text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 border border-slate-200/80 rounded-full transition-all cursor-pointer shrink-0 whitespace-nowrap shadow-xs"
+            title="進入 OshiPulse 管理後台控制台"
           >
-            後台管理
+            <Shield className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+            <span>後台管理</span>
           </Link>
 
-          {/* 💎 會員專區按鈕 (移除 flex-wrap，改用 flex-nowrap 與 shrink-0) */}
-          <div className="flex items-center flex-nowrap gap-2 justify-end shrink-0">
+          {/* 💎 會員專區按鈕 */}
+          <div className="flex items-center flex-nowrap gap-1.5 sm:gap-2 justify-end shrink-0">
             {!activeUser ? (
               <>
                 <Link
                   href="/member"
-                  className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-pink-600 hover:text-pink-700 border border-pink-200 rounded-full hover:bg-pink-50 transition shrink-0 whitespace-nowrap"
+                  className="px-3 sm:px-3.5 py-1.5 text-xs sm:text-sm font-semibold text-pink-600 hover:text-pink-700 border border-pink-200 rounded-full hover:bg-pink-50 transition shrink-0 whitespace-nowrap cursor-pointer"
                 >
                   🔐 會員登入
                 </Link>
                 <Link
                   href="/member"
-                  className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white bg-pink-600 rounded-full hover:bg-pink-700 shadow-sm transition shrink-0 whitespace-nowrap"
+                  className="hidden sm:inline-flex px-3 sm:px-3.5 py-1.5 text-xs sm:text-sm font-semibold text-white bg-pink-600 rounded-full hover:bg-pink-700 shadow-sm transition shrink-0 whitespace-nowrap cursor-pointer"
                 >
                   📝 註冊會員
                 </Link>
@@ -204,13 +230,13 @@ export default function Navbar() {
               <>
                 <Link
                   href="/member"
-                  className="px-3 py-1.5 text-xs sm:text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition shrink-0 whitespace-nowrap"
+                  className="px-3 py-1.5 text-xs sm:text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition shrink-0 whitespace-nowrap cursor-pointer"
                 >
                   ⚙️ 會員中心
                 </Link>
                 <button
                   onClick={handleSignOut}
-                  className="px-3 py-1.5 text-xs sm:text-sm font-semibold text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition shrink-0 whitespace-nowrap"
+                  className="px-3 py-1.5 text-xs sm:text-sm font-semibold text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition shrink-0 whitespace-nowrap cursor-pointer"
                 >
                   登出
                 </button>
@@ -218,10 +244,10 @@ export default function Navbar() {
             )}
           </div>
 
-          {/* 擴散希望領票鈕 (優化手機版顯示) */}
+          {/* 擴散希望領票鈕 */}
           <button
             onClick={() => openShareModal()}
-            className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-full text-xs font-bold text-cyber-rose bg-rose-50 hover:bg-rose-100 border border-rose-200 transition-all shadow-2xs shrink-0 whitespace-nowrap"
+            className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-full text-xs font-bold text-cyber-rose bg-rose-50 hover:bg-rose-100 border border-rose-200 transition-all shadow-2xs shrink-0 whitespace-nowrap cursor-pointer"
             title="發動擴散希望領取能量票"
           >
             <Share2 className="w-3.5 h-3.5" />
@@ -235,7 +261,7 @@ export default function Navbar() {
           <button
             onClick={toggleSound}
             aria-label="切換音效"
-            className="p-1.5 sm:p-2 text-slate-500 hover:text-slate-900 rounded-xl hover:bg-slate-100 transition-colors shrink-0"
+            className="p-1.5 sm:p-2 text-slate-500 hover:text-slate-900 rounded-xl hover:bg-slate-100 transition-colors shrink-0 cursor-pointer"
             title={isSoundEnabled ? "音效已開啟" : "音效已靜音"}
           >
             {isSoundEnabled ? (
@@ -248,7 +274,7 @@ export default function Navbar() {
           {/* 購物車按鈕 */}
           <button
             onClick={openCart}
-            className="relative p-1.5 sm:p-2 text-slate-700 hover:text-cyber-rose rounded-xl hover:bg-slate-100 transition-colors shrink-0"
+            className="relative p-1.5 sm:p-2 text-slate-700 hover:text-cyber-rose rounded-xl hover:bg-slate-100 transition-colors shrink-0 cursor-pointer"
             aria-label="開啟應援購物車"
           >
             <ShoppingBag className="w-5 h-5 shrink-0" />
@@ -262,7 +288,7 @@ export default function Navbar() {
           {/* 行動端漢堡選單 */}
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="lg:hidden p-1.5 sm:p-2 text-slate-600 hover:text-slate-900 rounded-xl hover:bg-slate-100 shrink-0"
+            className="lg:hidden p-1.5 sm:p-2 text-slate-600 hover:text-slate-900 rounded-xl hover:bg-slate-100 shrink-0 cursor-pointer"
             aria-label="選單"
           >
             {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -292,15 +318,18 @@ export default function Navbar() {
                 className="flex items-center gap-1.5 text-xs font-bold text-pink-700 bg-pink-50 hover:bg-pink-100 px-3 py-2 rounded-xl border border-pink-200"
               >
                 <User className="w-4 h-4 text-pink-600" />
-                <span>登入/註冊完整服務</span>
+                <span>登入/註冊會員</span>
               </Link>
             )}
             <Link
-              href="/admin"
-              onClick={() => setMobileMenuOpen(false)}
-              className="flex items-center gap-1.5 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 px-3 py-2 rounded-xl"
+              href={adminTargetPath}
+              onClick={(e) => {
+                setMobileMenuOpen(false);
+                handleAdminNavigation(e);
+              }}
+              className="flex items-center gap-1.5 text-xs font-bold text-slate-800 bg-slate-100 hover:bg-slate-200 px-3.5 py-2 rounded-xl transition cursor-pointer"
             >
-              <Shield className="w-4 h-4 text-slate-600" />
+              <Shield className="w-4 h-4 text-amber-500" />
               <span>後台管理</span>
             </Link>
           </div>
