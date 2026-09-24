@@ -23,7 +23,7 @@ export default function MemberPage() {
     idols,
   } = useAppStore()
 
-  // 表單欄位狀態
+  // 表單欄位狀態 (預設為乾淨空白字串)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [username, setUsername] = useState('')
@@ -46,7 +46,7 @@ export default function MemberPage() {
           setUser(session.user)
           await fetchProfileAndOrders(session.user.id)
         } else {
-          // 若無 Supabase session，檢查是否使用本機 store 會員
+          // 若無 Supabase session，檢查是否由使用者主動點擊了本機展示會員
           const local = useAppStore.getState().currentMember
           if (local) {
             setUser({ id: local.id, email: `${local.username}@oshipulse.com` })
@@ -57,6 +57,7 @@ export default function MemberPage() {
             setUser(null)
             setProfile(null)
             setOrders([])
+            clearForm()
           }
         }
       }
@@ -67,8 +68,23 @@ export default function MemberPage() {
     }
   }, [])
 
+  function clearForm() {
+    setEmail('')
+    setPassword('')
+    setUsername('')
+    setFullName('')
+    setNickname('')
+    setBirthDate('')
+    setPhone('')
+    setAddress('')
+    setFavoriteIdol('')
+  }
+
   function fillFormWithProfile(p: any) {
-    if (!p) return
+    if (!p) {
+      clearForm()
+      return
+    }
     setUsername(p.username || '')
     setFullName(p.full_name || '')
     setNickname(p.nickname || '')
@@ -120,7 +136,7 @@ export default function MemberPage() {
         setUser(session.user)
         await fetchProfileAndOrders(session.user.id)
       } else {
-        // 離線優先：若本機已有登入之展示會員
+        // 若本機有手動切換之展示會員才帶入，否則初始保持訪客未登入空白狀態
         const local = useAppStore.getState().currentMember
         if (local) {
           setUser({ id: local.id, email: `${local.username}@oshipulse.com` })
@@ -131,6 +147,7 @@ export default function MemberPage() {
           setUser(null)
           setProfile(null)
           setOrders([])
+          clearForm()
         }
       }
     } catch (err) {
@@ -141,6 +158,11 @@ export default function MemberPage() {
         setProfile(local)
         fillFormWithProfile(local)
         loadMockOrders(local.id)
+      } else {
+        setUser(null)
+        setProfile(null)
+        setOrders([])
+        clearForm()
       }
     } finally {
       setLoading(false)
@@ -292,7 +314,9 @@ export default function MemberPage() {
     setProfile(null)
     setOrders([])
     setCurrentMember(null)
-    setMessage('已成功登出')
+    clearForm()
+    setMessage('已成功切換為訪客未登入狀態，欄位已全數清空。')
+    setTimeout(() => setMessage(''), 3000)
   }
 
   async function handleUpdateProfile(e: React.FormEvent) {
@@ -336,7 +360,7 @@ export default function MemberPage() {
     }
   }
 
-  // 快速切換本機展示身分
+  // 快速切換本機展示身分 (方便除錯與體驗，點擊時一鍵帶入)
   const handleQuickSwitch = (m: Profile) => {
     setCurrentMember(m)
     setUser({ id: m.id, email: `${m.username}@oshipulse.com` })
@@ -425,8 +449,8 @@ export default function MemberPage() {
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="name@example.com 或輸入展示帳號"
-                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-pink-500 focus:outline-none"
+                    placeholder="請輸入電子信箱 (例如 name@example.com)"
+                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-pink-500 focus:outline-none placeholder:text-gray-400"
                   />
                 </div>
                 <div>
@@ -436,8 +460,8 @@ export default function MemberPage() {
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="請輸入密碼 (展示帳號可任意填寫)"
-                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-pink-500 focus:outline-none"
+                    placeholder="請輸入密碼"
+                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-pink-500 focus:outline-none placeholder:text-gray-400"
                   />
                 </div>
                 <button
@@ -449,7 +473,10 @@ export default function MemberPage() {
                 <div className="text-center mt-4">
                   <button
                     type="button"
-                    onClick={() => setIsLoginMode(false)}
+                    onClick={() => {
+                      setIsLoginMode(false)
+                      clearForm()
+                    }}
                     className="text-sm text-pink-600 hover:underline cursor-pointer"
                   >
                     還沒有帳號？點此免費註冊
@@ -466,8 +493,8 @@ export default function MemberPage() {
                       required
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      placeholder="name@example.com"
-                      className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-pink-500"
+                      placeholder="請輸入電子信箱 (例如 name@example.com)"
+                      className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-pink-500 placeholder:text-gray-400"
                     />
                   </div>
                   <div>
@@ -478,8 +505,8 @@ export default function MemberPage() {
                       minLength={6}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      placeholder="••••••••"
-                      className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-pink-500"
+                      placeholder="請輸入密碼 (至少6碼)"
+                      className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-pink-500 placeholder:text-gray-400"
                     />
                   </div>
                   <div>
@@ -489,8 +516,8 @@ export default function MemberPage() {
                       required
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
-                      placeholder="例如：wonyoung_fan_99"
-                      className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-pink-500"
+                      placeholder="請輸入或選擇會員帳號"
+                      className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-pink-500 placeholder:text-gray-400"
                     />
                   </div>
                   <div>
@@ -500,8 +527,8 @@ export default function MemberPage() {
                       required
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
-                      placeholder="0912-345-678"
-                      className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-pink-500"
+                      placeholder="請輸入手機號碼 (例如 0912-345-678)"
+                      className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-pink-500 placeholder:text-gray-400"
                     />
                   </div>
                   <div>
@@ -510,8 +537,8 @@ export default function MemberPage() {
                       type="text"
                       value={fullName}
                       onChange={(e) => setFullName(e.target.value)}
-                      placeholder="例如：林晨宇"
-                      className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-pink-500"
+                      placeholder="請輸入真實姓名"
+                      className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-pink-500 placeholder:text-gray-400"
                     />
                   </div>
                   <div>
@@ -520,8 +547,8 @@ export default function MemberPage() {
                       type="text"
                       value={nickname}
                       onChange={(e) => setNickname(e.target.value)}
-                      placeholder="例如：暗影獵人"
-                      className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-pink-500"
+                      placeholder="請輸入您的暱稱"
+                      className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-pink-500 placeholder:text-gray-400"
                     />
                   </div>
                   <div>
@@ -530,7 +557,7 @@ export default function MemberPage() {
                       type="date"
                       value={birthDate}
                       onChange={(e) => setBirthDate(e.target.value)}
-                      className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-pink-500"
+                      className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-pink-500 text-gray-700"
                     />
                   </div>
                   <div>
@@ -540,14 +567,14 @@ export default function MemberPage() {
                         type="text"
                         value={favoriteIdol}
                         onChange={(e) => setFavoriteIdol(e.target.value)}
-                        placeholder="例如：成振宇、五條悟、張員瑛"
-                        className="flex-1 mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-pink-500 font-bold text-pink-600"
+                        placeholder="請輸入最推的偶像或角色 (例如：成振宇、五條悟、張員瑛)"
+                        className="flex-1 mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-pink-500 font-bold text-pink-600 placeholder:text-gray-400 placeholder:font-normal"
                       />
                       <select
                         onChange={(e) => {
                           if (e.target.value) setFavoriteIdol(e.target.value)
                         }}
-                        className="mt-1 px-2 py-2 bg-gray-50 border border-gray-300 rounded-md text-xs"
+                        className="mt-1 px-2 py-2 bg-gray-50 border border-gray-300 rounded-md text-xs cursor-pointer"
                         defaultValue=""
                       >
                         <option value="" disabled>
@@ -568,8 +595,8 @@ export default function MemberPage() {
                     type="text"
                     value={address}
                     onChange={(e) => setAddress(e.target.value)}
-                    placeholder="例如：台北市大安區信義路四段100號"
-                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-pink-500"
+                    placeholder="請輸入聯絡地址"
+                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-pink-500 placeholder:text-gray-400"
                   />
                 </div>
                 <button
@@ -581,7 +608,10 @@ export default function MemberPage() {
                 <div className="text-center mt-4">
                   <button
                     type="button"
-                    onClick={() => setIsLoginMode(true)}
+                    onClick={() => {
+                      setIsLoginMode(true)
+                      clearForm()
+                    }}
                     className="text-sm text-pink-600 hover:underline cursor-pointer"
                   >
                     已經有帳號了？點此登入
@@ -620,7 +650,8 @@ export default function MemberPage() {
                     required
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
-                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-pink-500"
+                    placeholder="請輸入或選擇會員帳號"
+                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-pink-500 placeholder:text-gray-400"
                   />
                 </div>
                 <div>
@@ -630,7 +661,8 @@ export default function MemberPage() {
                     required
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-pink-500"
+                    placeholder="請輸入手機號碼 (例如 0912-345-678)"
+                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-pink-500 placeholder:text-gray-400"
                   />
                 </div>
                 <div>
@@ -639,7 +671,8 @@ export default function MemberPage() {
                     type="text"
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
-                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-pink-500"
+                    placeholder="請輸入真實姓名"
+                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-pink-500 placeholder:text-gray-400"
                   />
                 </div>
                 <div>
@@ -648,7 +681,8 @@ export default function MemberPage() {
                     type="text"
                     value={nickname}
                     onChange={(e) => setNickname(e.target.value)}
-                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-pink-500"
+                    placeholder="請輸入您的暱稱"
+                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-pink-500 placeholder:text-gray-400"
                   />
                 </div>
                 <div>
@@ -657,7 +691,7 @@ export default function MemberPage() {
                     type="date"
                     value={birthDate}
                     onChange={(e) => setBirthDate(e.target.value)}
-                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-pink-500"
+                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-pink-500 text-gray-700"
                   />
                 </div>
                 <div>
@@ -670,14 +704,14 @@ export default function MemberPage() {
                       required
                       value={favoriteIdol}
                       onChange={(e) => setFavoriteIdol(e.target.value)}
-                      placeholder="例如：成振宇、五條悟、張員瑛"
-                      className="flex-1 mt-1 block w-full rounded-md border border-pink-300 bg-pink-50/40 px-3 py-2 shadow-sm focus:border-pink-500 font-bold text-pink-700"
+                      placeholder="請輸入最推的偶像或角色 (例如：成振宇、五條悟、張員瑛)"
+                      className="flex-1 mt-1 block w-full rounded-md border border-pink-300 bg-pink-50/40 px-3 py-2 shadow-sm focus:border-pink-500 font-bold text-pink-700 placeholder:text-gray-400 placeholder:font-normal"
                     />
                     <select
                       onChange={(e) => {
                         if (e.target.value) setFavoriteIdol(e.target.value)
                       }}
-                      className="mt-1 px-2 py-2 bg-gray-50 border border-gray-300 rounded-md text-xs"
+                      className="mt-1 px-2 py-2 bg-gray-50 border border-gray-300 rounded-md text-xs cursor-pointer"
                       defaultValue=""
                     >
                       <option value="" disabled>
@@ -698,7 +732,8 @@ export default function MemberPage() {
                   type="text"
                   value={address}
                   onChange={(e) => setAddress(e.target.value)}
-                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-pink-500"
+                  placeholder="請輸入聯絡地址"
+                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-pink-500 placeholder:text-gray-400"
                 />
               </div>
               <button

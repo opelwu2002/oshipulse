@@ -373,7 +373,7 @@ export const useAppStore = create<AppState>()(
 
 
       // 平台會員狀態
-      currentMember: INITIAL_PROFILES[0],
+      currentMember: null,
       setCurrentMember: (profile) => set({ currentMember: profile }),
       members: INITIAL_PROFILES,
       addMember: (newMem) => {
