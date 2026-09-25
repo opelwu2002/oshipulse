@@ -1,13 +1,12 @@
 "use client";
 
-import React, { useState } from "react";
-import SafeImage from "@/components/SafeImage";
+import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useAppStore } from "@/lib/store";
-import VoteButton from "@/components/VoteButton";
-import { formatNumber, getCountryBadge, getCategoryBadge, is2DFranchiseIdol } from "@/lib/utils";
+import IdolCard from "@/components/IdolCard";
+import { is2DFranchiseIdol } from "@/lib/utils";
 import { MASCOT_QUOTES } from "@/lib/mascotQuotes";
-import { Search, Filter, Trophy, Sparkles, ExternalLink, Users } from "lucide-react";
+import { Search, Trophy } from "lucide-react";
 
 export default function IdolsPage() {
   const { idols } = useAppStore();
@@ -15,16 +14,63 @@ export default function IdolsPage() {
   const [selectedCountry, setSelectedCountry] = useState<string>("ALL");
   const [selectedCategory, setSelectedCategory] = useState<string>("ALL");
   const [sortBy, setSortBy] = useState<"votes" | "debut">("votes");
+  const [dbIdols, setDbIdols] = useState<any[]>([]);
+
+  // 🛡️ 即時同步：進入前台名冊庫時向 API 同步最新 Supabase 角色清單與立繪
+  useEffect(() => {
+    async function loadLatestIdols() {
+      try {
+        const res = await fetch(`/api/admin/idols?t=${Date.now()}`);
+        const json = await res.json();
+        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+          setDbIdols(json.data);
+        }
+      } catch (err) {
+        console.warn("前台載入資料庫角色失敗，平滑切換至本機快取:", err);
+      }
+    }
+    loadLatestIdols();
+  }, []);
+
+  // 統一資料來源：資料庫優先，並對齊 image_url / avatar 實體欄位
+  const allIdols = useMemo(() => {
+    if (dbIdols.length === 0) return idols;
+
+    return dbIdols.map((db) => {
+      const local = idols.find((i) => i.id === db.id);
+      const finalImg =
+        db.image_url ||
+        db.avatar ||
+        db.avatar_url ||
+        (local as any)?.image_url ||
+        local?.avatar_url ||
+        "";
+
+      return {
+        ...(local || {}),
+        ...db,
+        id: db.id,
+        name: db.name || local?.name || "未知角色",
+        original_name: db.original_name || local?.original_name || db.work || "",
+        country: db.country || local?.country || "JP",
+        category: db.category || local?.category || "character",
+        vote_count: Number(db.votes ?? db.vote_count ?? local?.vote_count ?? 0),
+        image_url: finalImg,
+        avatar: finalImg,
+        avatar_url: finalImg,
+      };
+    });
+  }, [dbIdols, idols]);
 
   // 篩選與排序邏輯
-  const filtered = idols
+  const filtered = allIdols
     .filter((idol) => {
       const matchSearch =
         idol.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (idol.original_name && idol.original_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
         (idol.wiki_slug && idol.wiki_slug.toLowerCase().includes(searchTerm.toLowerCase())) ||
         idol.members?.some(
-          (m) =>
+          (m: any) =>
             m.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
             (m.original_name && m.original_name.toLowerCase().includes(searchTerm.toLowerCase()))
         );
@@ -38,7 +84,7 @@ export default function IdolsPage() {
       return matchSearch && matchCountry && matchCategory;
     })
     .sort((a, b) => {
-      if (sortBy === "votes") return b.vote_count - a.vote_count;
+      if (sortBy === "votes") return (b.vote_count || 0) - (a.vote_count || 0);
       return (b.debut_year || 0) - (a.debut_year || 0);
     });
 
@@ -144,7 +190,7 @@ export default function IdolsPage() {
         </div>
       </div>
 
-      {/* 偶像列表 (Bento 格狀呈現) */}
+      {/* 偶像列表 (Bento 格狀呈現，整合標準 IdolCard) */}
       {filtered.length === 0 ? (
         <div className="py-16 text-center space-y-4 bg-slate-50 rounded-3xl border border-slate-200/80 p-8">
           <div className="w-16 h-16 bg-purple-100 text-cyber-violet rounded-full flex items-center justify-center mx-auto text-2xl font-black">
@@ -160,110 +206,21 @@ export default function IdolsPage() {
               setSelectedCountry("ALL");
               setSelectedCategory("ALL");
             }}
-            className="px-5 py-2 text-xs font-bold text-white bg-slate-900 rounded-full hover:bg-slate-800 transition-all"
+            className="px-5 py-2 text-xs font-bold text-white bg-slate-900 rounded-full hover:bg-slate-800 transition-all cursor-pointer"
           >
             重設篩選條件
           </button>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-          {filtered.map((idol, index) => {
-            const country = getCountryBadge(idol.country);
-            const categoryName = getCategoryBadge(idol.category);
-
-            return (
-              <div
-                key={idol.id}
-                className="bento-card p-5 flex flex-col justify-between group relative overflow-hidden"
-              >
-                {/* 排名角標 */}
-                <div className="absolute top-3 left-3 z-10">
-                  <span
-                    className={`px-2.5 py-1 rounded-full text-[10px] font-mono font-black shadow-sm ${
-                      index === 0
-                        ? "bg-amber-400 text-slate-950"
-                        : index === 1
-                        ? "bg-slate-200 text-slate-800"
-                        : index === 2
-                        ? "bg-amber-700 text-white"
-                        : "bg-slate-100 text-slate-600"
-                    }`}
-                  >
-                    #{index + 1}
-                  </span>
-                </div>
-
-                <div>
-                  {/* 1:1 頭像展示 */}
-                  <div className="relative w-full aspect-square rounded-2xl overflow-hidden mb-4 bg-slate-100 border border-slate-100">
-                    <SafeImage
-                      src={idol.avatar_url || (idol as any).avatar || (idol as any).image_url || (idol as any).headshot_url}
-                      alt={idol.name}
-                      fill
-                      className="object-cover group-hover:scale-105 transition-transform duration-500"
-                      unoptimized
-                    />
-                    <div className="absolute top-3 right-3 flex items-center gap-1 bg-white/90 backdrop-blur-sm px-2 py-0.5 rounded-full text-xs font-bold shadow-sm">
-                      <span>{country.flag}</span>
-                      <span className="text-[10px] text-slate-700">{country.name}</span>
-                    </div>
-                  </div>
-
-                  {/* 偶像基本資訊 */}
-                  <div className="space-y-1 mb-3">
-                    <div className="flex items-center justify-between">
-                      <Link
-                        href={`/idols/${idol.id}`}
-                        className="text-base font-black text-slate-900 group-hover:text-cyber-violet transition-colors truncate"
-                      >
-                        {idol.name}
-                      </Link>
-                      <span className="text-[10px] font-bold text-cyber-violet bg-purple-50 px-2 py-0.5 rounded-full shrink-0">
-                        {is2DFranchiseIdol(idol.wiki_slug, idol.name)
-                          ? "2.5D企劃 🎤"
-                          : categoryName}
-                      </span>
-                    </div>
-                    <div className="text-xs text-slate-400 truncate">
-                      {idol.original_name} · {idol.formation === "group" ? "團體組合" : "個人單人"}
-                    </div>
-                  </div>
-
-                  {/* 代表作預覽 */}
-                  {idol.notable_works && idol.notable_works.length > 0 && (
-                    <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 mb-3 text-[11px] text-slate-600 space-y-1">
-                      <div className="text-[10px] text-slate-400 font-bold">代表成就/代表作：</div>
-                      <div className="truncate font-medium text-slate-800">
-                        {idol.notable_works.map((w) => w.title).join(" · ")}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* 成員陣容預覽 */}
-                  {idol.members && idol.members.length > 1 && (
-                    <div className="text-[11px] text-slate-500 mb-4 flex items-center gap-1">
-                      <span className="text-[10px] font-bold text-slate-400 shrink-0">收錄：</span>
-                      <span className="truncate text-slate-700 font-medium">
-                        {idol.members.slice(0, 4).map((m) => m.name).join("、")}
-                        {idol.members.length > 4 ? ` 等 ${idol.members.length} 位` : ""}
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                {/* 聲量數據與投票按鈕 */}
-                <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
-                  <div>
-                    <div className="text-base font-mono font-black text-slate-900">
-                      {formatNumber(idol.vote_count)}
-                    </div>
-                    <div className="text-[10px] text-slate-400">總累積聲量</div>
-                  </div>
-                  <VoteButton idolId={idol.id} idolName={idol.name} size="sm" />
-                </div>
-              </div>
-            );
-          })}
+          {filtered.map((idol, index) => (
+            <IdolCard
+              key={idol.id}
+              idol={idol}
+              index={index}
+              showVoteButton={true}
+            />
+          ))}
         </div>
       )}
     </div>

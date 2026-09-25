@@ -42,14 +42,29 @@ function resolveImageUrl(srcInput: any): string {
   if (typeof srcInput === "string") {
     raw = srcInput;
   } else if (typeof srcInput === "object") {
-    raw =
-      srcInput.avatar ||
-      srcInput.avatar_url ||
-      srcInput.image_url ||
-      srcInput.headshot_url ||
-      srcInput.cover_url ||
-      srcInput.src ||
-      "";
+    // 🛡️ 優先選取真實外鏈圖片 (image_url 或 avatar)，避免命中本地舊色塊偽 JPG
+    const isHttp = (url?: any) =>
+      typeof url === "string" &&
+      (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("//"));
+
+    if (isHttp(srcInput.image_url)) {
+      raw = srcInput.image_url;
+    } else if (isHttp(srcInput.avatar)) {
+      raw = srcInput.avatar;
+    } else if (isHttp(srcInput.avatar_url)) {
+      raw = srcInput.avatar_url;
+    } else if (isHttp(srcInput.cover_url)) {
+      raw = srcInput.cover_url;
+    } else {
+      raw =
+        srcInput.image_url ||
+        srcInput.avatar ||
+        srcInput.avatar_url ||
+        srcInput.headshot_url ||
+        srcInput.cover_url ||
+        srcInput.src ||
+        "";
+    }
   }
 
   if (!raw || typeof raw !== "string") return "";

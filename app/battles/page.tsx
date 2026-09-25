@@ -119,7 +119,7 @@ export default function BattlesPage() {
                     <div className="flex items-center gap-3 p-3 rounded-2xl bg-amber-50 border border-amber-200">
                       <div className="relative w-12 h-12 rounded-full overflow-hidden border-2 border-amber-400 shrink-0">
                         <SafeImage
-                          src={champion.avatar_url || (champion as any).avatar || (champion as any).image_url}
+                          src={(champion as any).image_url || (champion as any).avatar || champion.avatar_url || (champion as any).cover_url}
                           alt={champion.name}
                           fill
                           className="object-cover"

@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import SafeImage from "@/components/SafeImage";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -31,8 +31,39 @@ export default function IdolDetailPage() {
   const params = useParams();
   const id = params?.id as string;
   const { idols, products, addToCart, openShareModal } = useAppStore();
+  const [dbIdol, setDbIdol] = useState<any>(null);
 
-  const idol = idols.find((i) => i.id === id) || idols[0];
+  // 🛡️ 即時同步：載入詳情頁時自 API 取得最新立繪與資料
+  useEffect(() => {
+    async function loadRealIdol() {
+      try {
+        const res = await fetch(`/api/admin/idols?t=${Date.now()}`);
+        const json = await res.json();
+        if (json.success && Array.isArray(json.data)) {
+          const match = json.data.find((item: any) => item.id === id);
+          if (match) {
+            setDbIdol(match);
+          }
+        }
+      } catch (e) {
+        console.warn("載入資料庫偶像詳情失敗，使用本地備援:", e);
+      }
+    }
+    if (id) loadRealIdol();
+  }, [id]);
+
+  const baseIdol = idols.find((i) => i.id === id) || idols[0];
+  const idol: any = dbIdol
+    ? {
+        ...baseIdol,
+        ...dbIdol,
+        image_url: dbIdol.image_url || dbIdol.avatar || dbIdol.avatar_url || baseIdol?.avatar_url || "",
+        avatar: dbIdol.avatar || dbIdol.image_url || dbIdol.avatar_url || baseIdol?.avatar_url || "",
+        avatar_url: dbIdol.image_url || dbIdol.avatar || dbIdol.avatar_url || baseIdol?.avatar_url || "",
+        vote_count: Number(dbIdol.votes ?? dbIdol.vote_count ?? baseIdol?.vote_count ?? 0),
+      }
+    : baseIdol;
+
   const relatedProducts = products.filter((p) => p.idol_id === idol?.id);
 
   if (!idol) {
@@ -90,7 +121,7 @@ export default function IdolDetailPage() {
             {/* 1:1 頭像 */}
             <div className="relative w-24 h-24 sm:w-36 sm:h-36 rounded-3xl overflow-hidden border-4 border-white shadow-2xl shrink-0 bg-slate-100">
               <SafeImage
-                src={idol.avatar_url || (idol as any).avatar || (idol as any).image_url || (idol as any).headshot_url}
+                src={(idol as any).image_url || (idol as any).avatar || idol.avatar_url || (idol as any).headshot_url}
                 alt={idol.name}
                 fill
                 className="object-cover"
@@ -142,7 +173,7 @@ export default function IdolDetailPage() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {idol.members && idol.members.length > 0 ? (
-                idol.members.map((member, idx) => (
+                idol.members.map((member: any, idx: number) => (
                   <div
                     key={idx}
                     className="flex items-center gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-100 hover:border-slate-200 transition-all"
@@ -213,7 +244,7 @@ export default function IdolDetailPage() {
                       desc: "跨越次元與國境疆界，在此持續燃燒炙熱的應援誓言！",
                     },
                   ]
-              ).map((milestone, idx) => (
+              ).map((milestone: any, idx: number) => (
                 <div key={idx} className="relative group">
                   <div className="absolute -left-[31px] top-1 w-3.5 h-3.5 rounded-full bg-white border-2 border-cyber-purple group-hover:bg-cyber-purple group-hover:scale-125 transition-all shadow-xs" />
                   <div className="space-y-1">
@@ -242,7 +273,7 @@ export default function IdolDetailPage() {
                 <h3 className="text-base font-black text-slate-900">代表作與輝煌成就</h3>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {idol.notable_works.map((work, idx) => (
+                {idol.notable_works.map((work: any, idx: number) => (
                   <div
                     key={idx}
                     className="flex items-center gap-2.5 p-3 rounded-2xl bg-purple-50/50 border border-purple-100"
@@ -307,7 +338,7 @@ export default function IdolDetailPage() {
             </h3>
             <div className="space-y-2">
               {idol.official_links && idol.official_links.length > 0 ? (
-                idol.official_links.map((link, idx) => (
+                idol.official_links.map((link: any, idx: number) => (
                   <a
                     key={idx}
                     href={link.url}

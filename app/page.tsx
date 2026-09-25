@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import SafeImage from "@/components/SafeImage";
 import Link from "next/link";
 import { useAppStore } from "@/lib/store";
@@ -41,9 +41,56 @@ export default function HomePage() {
     openPersonalityQuiz,
   } = useAppStore();
   const [selectedFilter, setSelectedFilter] = useState<string>("ALL");
+  const [dbIdols, setDbIdols] = useState<any[]>([]);
+
+  // 🛡️ 即時同步：首頁載入時向 API 取得最新真實角色與圖片網址
+  useEffect(() => {
+    async function loadLatestIdols() {
+      try {
+        const res = await fetch(`/api/admin/idols?t=${Date.now()}`);
+        const json = await res.json();
+        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+          setDbIdols(json.data);
+        }
+      } catch (err) {
+        console.warn("首頁載入資料庫偶像失敗，使用本地備援:", err);
+      }
+    }
+    loadLatestIdols();
+  }, []);
+
+  // 統一資料來源：資料庫優先，並對齊 image_url / avatar 實體欄位
+  const allIdols = useMemo(() => {
+    if (dbIdols.length === 0) return idols;
+
+    return dbIdols.map((db) => {
+      const local = idols.find((i) => i.id === db.id);
+      const finalImg =
+        db.image_url ||
+        db.avatar ||
+        db.avatar_url ||
+        (local as any)?.image_url ||
+        local?.avatar_url ||
+        "";
+
+      return {
+        ...(local || {}),
+        ...db,
+        id: db.id,
+        name: db.name || local?.name || "未知角色",
+        original_name: db.original_name || local?.original_name || db.work || "",
+        country: db.country || local?.country || "JP",
+        category: db.category || local?.category || "character",
+        vote_count: Number(db.votes ?? db.vote_count ?? local?.vote_count ?? 0),
+        image_url: finalImg,
+        avatar: finalImg,
+        avatar_url: finalImg,
+      };
+    });
+  }, [dbIdols, idols]);
 
   // 根據篩選過濾偶像列表
-  const filteredIdols = idols.filter((idol) => {
+  const filteredIdols = allIdols.filter((idol) => {
     if (selectedFilter === "ALL") return true;
     if (selectedFilter === "CHARACTER") return idol.category === "character";
     if (selectedFilter === "FRANCHISE") return is2DFranchiseIdol(idol.wiki_slug, idol.name);
@@ -51,7 +98,7 @@ export default function HomePage() {
   });
 
   // 排序計算排行
-  const sortedIdols = [...filteredIdols].sort((a, b) => b.vote_count - a.vote_count);
+  const sortedIdols = [...filteredIdols].sort((a, b) => (b.vote_count || 0) - (a.vote_count || 0));
   const topFive = sortedIdols.slice(0, 5);
 
   const activeBattle = battles.find((b) => b.status === "live") || battles[0];
@@ -187,7 +234,7 @@ export default function HomePage() {
                       </span>
                       <div className="relative w-12 h-12 rounded-xl overflow-hidden shrink-0 border border-slate-200">
                         <SafeImage
-                          src={idol.avatar_url || (idol as any).avatar || (idol as any).image_url || (idol as any).headshot_url}
+                          src={(idol as any).image_url || (idol as any).avatar || idol.avatar_url || (idol as any).headshot_url}
                           alt={idol.name}
                           fill
                           className="object-cover"
