@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { getSupabaseAdminClient } from "@/lib/supabase";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || "";
-const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export async function GET() {
   try {
+    const supabaseAdmin = getSupabaseAdminClient();
     const { data, error } = await supabaseAdmin
       .from("battles")
       .select("*")
@@ -38,6 +38,7 @@ export async function PUT(request: Request) {
     if (blue_votes !== undefined) updatePayload.blue_votes = blue_votes;
     if (status !== undefined) updatePayload.status = status;
 
+    const supabaseAdmin = getSupabaseAdminClient();
     const { data, error } = await supabaseAdmin
       .from("battles")
       .update(updatePayload)

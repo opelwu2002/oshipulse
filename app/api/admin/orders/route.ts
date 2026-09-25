@@ -1,15 +1,12 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { getSupabaseAdminClient } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || "";
-const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
-
 export async function GET() {
   try {
+    const supabaseAdmin = getSupabaseAdminClient();
     const { data, error } = await supabaseAdmin
       .from("orders")
       .select("*")
@@ -49,6 +46,7 @@ export async function PUT(request: Request) {
     if (amount !== undefined) updatePayload.amount = Number(amount) || 0;
     if (status !== undefined) updatePayload.status = status;
 
+    const supabaseAdmin = getSupabaseAdminClient();
     const { data, error } = await supabaseAdmin
       .from("orders")
       .update(updatePayload)
@@ -78,6 +76,7 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ success: false, message: "缺少要刪除的訂單 ID" }, { status: 400 });
     }
 
+    const supabaseAdmin = getSupabaseAdminClient();
     const { error } = await supabaseAdmin
       .from("orders")
       .delete()

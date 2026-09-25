@@ -1,13 +1,13 @@
-﻿import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { NextResponse } from "next/server";
+import { getSupabaseAdminClient } from "@/lib/supabase";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || "";
-const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 // GET: 讀取所有真實會員
 export async function GET() {
   try {
+    const supabaseAdmin = getSupabaseAdminClient();
     const { data, error } = await supabaseAdmin
       .from("profiles")
       .select("*")
@@ -33,6 +33,7 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ success: false, message: "缺少會員 ID" }, { status: 400 });
     }
 
+    const supabaseAdmin = getSupabaseAdminClient();
     const { error } = await supabaseAdmin.from("profiles").delete().eq("id", id);
 
     if (error) {
@@ -66,6 +67,7 @@ export async function PUT(request: Request) {
     if (address !== undefined) updatePayload.address = address;
     if (favorite_idol !== undefined) updatePayload.favorite_idol = favorite_idol;
 
+    const supabaseAdmin = getSupabaseAdminClient();
     const { data, error } = await supabaseAdmin
       .from("profiles")
       .update(updatePayload)

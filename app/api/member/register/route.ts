@@ -1,10 +1,9 @@
-﻿import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { NextResponse } from "next/server";
+import { getSupabaseAdminClient } from "@/lib/supabase";
 import crypto from "crypto";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || "";
-const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export async function POST(request: Request) {
   try {
@@ -35,6 +34,7 @@ export async function POST(request: Request) {
       updated_at: new Date().toISOString(),
     };
 
+    const supabaseAdmin = getSupabaseAdminClient();
     const { data, error } = await supabaseAdmin
       .from("profiles")
       .upsert(profileData, { onConflict: "id" })

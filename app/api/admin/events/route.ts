@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { getSupabaseAdminClient } from "@/lib/supabase";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || "";
-const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export async function GET() {
   try {
+    const supabaseAdmin = getSupabaseAdminClient();
     const { data, error } = await supabaseAdmin
       .from("events")
       .select("*")
@@ -32,6 +32,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, message: "活動標題為必填" }, { status: 400 });
     }
 
+    const supabaseAdmin = getSupabaseAdminClient();
     const { data, error } = await supabaseAdmin
       .from("events")
       .insert([
@@ -65,6 +66,7 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ success: false, message: "缺少活動 ID" }, { status: 400 });
     }
 
+    const supabaseAdmin = getSupabaseAdminClient();
     const { error } = await supabaseAdmin.from("events").delete().eq("id", id);
     if (error) {
       return NextResponse.json({ success: false, message: error.message }, { status: 500 });

@@ -1,15 +1,12 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { getSupabaseAdminClient } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || "";
-const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
-
 export async function GET() {
   try {
+    const supabaseAdmin = getSupabaseAdminClient();
     const { data, error } = await supabaseAdmin
       .from("idols")
       .select("*")
@@ -69,6 +66,7 @@ export async function PUT(request: Request) {
     if (votes !== undefined) updatePayload.votes = Number(votes) || 0;
     if (match_history !== undefined) updatePayload.match_history = match_history;
 
+    const supabaseAdmin = getSupabaseAdminClient();
     // 執行真實寫入 (使用 upsert 確保即使此 ID 為新項目亦能 100% 成功入庫)
     let { data, error } = await supabaseAdmin
       .from("idols")
