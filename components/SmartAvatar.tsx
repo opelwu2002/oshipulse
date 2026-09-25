@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
+import { getIdolAvatar } from "@/lib/utils";
 
 export interface SmartAvatarProps extends Omit<React.ImgHTMLAttributes<HTMLImageElement>, "src"> {
   src?: string | null | any;
@@ -34,40 +35,19 @@ function getGradientTheme(name: string) {
 
 /**
  * 自動解析可能的圖片來源屬性 (avatar, avatar_url, image_url, headshot_url, cover_url)
- * 支援協定補齊、去除外層引號與 Google 圖片搜尋跳轉網址解析
+ * 支援協定補齊、去除外層引號與 Google 圖片搜尋跳轉網址解析，並攔截本地偽色塊路徑
  */
 function resolveImageUrl(srcInput: any): string {
   if (!srcInput) return "";
-  let raw = "";
-  if (typeof srcInput === "string") {
-    raw = srcInput;
-  } else if (typeof srcInput === "object") {
-    // 🛡️ 優先選取真實外鏈圖片 (image_url 或 avatar)，避免命中本地舊色塊偽 JPG
-    const isHttp = (url?: any) =>
-      typeof url === "string" &&
-      (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("//"));
 
-    if (isHttp(srcInput.image_url)) {
-      raw = srcInput.image_url;
-    } else if (isHttp(srcInput.avatar)) {
-      raw = srcInput.avatar;
-    } else if (isHttp(srcInput.avatar_url)) {
-      raw = srcInput.avatar_url;
-    } else if (isHttp(srcInput.cover_url)) {
-      raw = srcInput.cover_url;
-    } else {
-      raw =
-        srcInput.image_url ||
-        srcInput.avatar ||
-        srcInput.avatar_url ||
-        srcInput.headshot_url ||
-        srcInput.cover_url ||
-        srcInput.src ||
-        "";
-    }
-  }
+  // 🛡️ 權威萃取：優先調用 getIdolAvatar，若為本機偽色塊路徑將自動轉為真實外部大圖
+  const extracted = getIdolAvatar(srcInput);
+  let raw = extracted || (typeof srcInput === "string" ? srcInput : "");
 
+  // 若依舊為空或屬於偽色塊路徑，杜絕載入假圖
   if (!raw || typeof raw !== "string") return "";
+  if (raw.includes("/images/idols/")) return "";
+
   let url = raw.trim().replace(/^['"]|['"]$/g, ""); // 去除外層引號
 
   // 若以雙斜線開頭 (Protocol-relative URL)，自動補齊 https:
@@ -79,9 +59,9 @@ function resolveImageUrl(srcInput: any): string {
   if (url.includes("google.com/imgres") || url.includes("google.com/url")) {
     try {
       const parsed = new URL(url);
-      const extracted = parsed.searchParams.get("imgurl") || parsed.searchParams.get("url");
-      if (extracted) {
-        url = decodeURIComponent(extracted);
+      const extractedUrl = parsed.searchParams.get("imgurl") || parsed.searchParams.get("url");
+      if (extractedUrl) {
+        url = decodeURIComponent(extractedUrl);
       }
     } catch {
       // 保持原始 url

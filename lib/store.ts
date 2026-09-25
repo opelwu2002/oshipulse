@@ -14,6 +14,7 @@ import {
   INITIAL_MESSAGES,
 } from "./mockData";
 import { soundEngine } from "./audio";
+import { getIdolAvatar } from "./utils";
 
 
 export const INITIAL_PROFILES: Profile[] = [
@@ -26,7 +27,7 @@ export const INITIAL_PROFILES: Profile[] = [
     phone: "0912-345-678",
     address: "台北市大安區信義路四段100號",
     favorite_idol: "成振宇 (Sung Jinwoo)",
-    avatar_url: "/images/idols/sung-jinwoo.jpg",
+    avatar_url: "https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx105398-b673VtlCXHQT.jpg",
     role: "user",
     referral_code: "JINWOO2026",
     bonus_votes: 120,
@@ -42,7 +43,7 @@ export const INITIAL_PROFILES: Profile[] = [
     phone: "0923-456-789",
     address: "新北市板橋區文化路一段20號",
     favorite_idol: "五條悟",
-    avatar_url: "/images/idols/gojo-satoru.jpg",
+    avatar_url: "https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx113415-bbBWj4pEFseh.jpg",
     role: "user",
     referral_code: "INFINITY5",
     bonus_votes: 85,
@@ -58,7 +59,7 @@ export const INITIAL_PROFILES: Profile[] = [
     phone: "0934-567-890",
     address: "台中市西區公益路68號",
     favorite_idol: "田柾國 (Jung Kook)",
-    avatar_url: "/images/idols/jungkook.jpg",
+    avatar_url: "https://upload.wikimedia.org/wikipedia/commons/4/4e/BTS_for_Dispatch_White_Day_Special%2C_27_February_2019_01.jpg",
     role: "user",
     referral_code: "SEVEN777",
     bonus_votes: 210,
@@ -74,7 +75,7 @@ export const INITIAL_PROFILES: Profile[] = [
     phone: "0955-678-901",
     address: "高雄市左營區博愛二路777號",
     favorite_idol: "張員瑛 (Wonyoung)",
-    avatar_url: "/images/idols/wonyoung.jpg",
+    avatar_url: "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6a/230811_Jamboree_K-Pop_Super_Live_IVE.jpg/1200px-230811_Jamboree_K-Pop_Super_Live_IVE.jpg",
     role: "user",
     referral_code: "VICKY100",
     bonus_votes: 160,
@@ -90,7 +91,7 @@ export const INITIAL_PROFILES: Profile[] = [
     phone: "0966-789-012",
     address: "台南市中西區西門路一段658號",
     favorite_idol: "芙莉蓮 (Frieren)",
-    avatar_url: "/images/idols/frieren.jpg",
+    avatar_url: "https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx154587-g1roJ6R7zJ6C.jpg",
     role: "user",
     referral_code: "ZOLTRAAK",
     bonus_votes: 95,
@@ -298,6 +299,9 @@ interface AppState {
   updateEvent: (id: string, updates: Partial<EventData>) => void;
   deleteEvent: (id: string) => void;
   duplicateEvent: (id: string) => void;
+
+  // 🛡️ 與 Supabase 資料庫真實同步
+  syncIdolsFromApi: () => Promise<void>;
 }
 
 export const useAppStore = create<AppState>()(
@@ -648,9 +652,67 @@ export const useAppStore = create<AppState>()(
           return { events: [copy, ...state.events] };
         });
       },
+
+      // 🛡️ 與 Supabase 資料庫真實同步：拉取最新角色與立繪，全面過濾偽色塊
+      syncIdolsFromApi: async () => {
+        try {
+          const res = await fetch(`/api/admin/idols?t=${Date.now()}`);
+          const json = await res.json();
+          if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+            set((state) => {
+              const dbMap = new Map(json.data.map((i: any) => [i.id, i]));
+              const updated = state.idols.map((local) => {
+                const db = dbMap.get(local.id) as any;
+                if (db) {
+                  const avatar = getIdolAvatar(db) || getIdolAvatar(local);
+                  return {
+                    ...local,
+                    ...db,
+                    avatar,
+                    avatar_url: avatar,
+                    image_url: avatar,
+                    vote_count: Number(db.votes ?? db.vote_count ?? local.vote_count),
+                  };
+                }
+                const cleanLocalAvatar = getIdolAvatar(local);
+                return {
+                  ...local,
+                  avatar: cleanLocalAvatar,
+                  avatar_url: cleanLocalAvatar,
+                  image_url: cleanLocalAvatar,
+                };
+              });
+
+              // 若有資料庫新增的角色，合併進本地列表
+              json.data.forEach((db: any) => {
+                if (!updated.some((i) => i.id === db.id)) {
+                  const avatar = getIdolAvatar(db);
+                  updated.push({
+                    ...db,
+                    id: db.id,
+                    name: db.name || "新角色",
+                    original_name: db.work || db.original_name || "",
+                    country: db.country || "JP",
+                    category: db.category || "character",
+                    avatar,
+                    avatar_url: avatar,
+                    image_url: avatar,
+                    vote_count: Number(db.votes ?? db.vote_count ?? 0),
+                  });
+                }
+              });
+
+              updated.sort((a, b) => b.vote_count - a.vote_count);
+              return { idols: updated };
+            });
+          }
+        } catch (err) {
+          console.warn("全域同步偶像資料庫失敗，保持現有狀態:", err);
+        }
+      },
     }),
     {
-      name: "oshipulse_local_storage_v10",
+      name: "oshipulse_local_storage_v11",
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({
         cart: state.cart,
@@ -672,19 +734,29 @@ export const useAppStore = create<AppState>()(
         dailyStreak: state.dailyStreak,
         personalityType: state.personalityType,
       }),
-      // 當本機儲存資料載入時，自動清除廢棄團體 ID 並補齊最新 solo 動漫角色與預設活動
+      // 當本機儲存資料載入時，自動清除廢棄團體 ID 並補齊最新 solo 動漫角色，全面清洗文字色塊
       onRehydrateStorage: () => (state) => {
         if (state) {
           if (state.idols) {
             const validInitialIds = new Set(INITIAL_IDOLS.map((i) => i.id));
-            // 濾除已被 purge 的舊動漫打包條目
             state.idols = state.idols.filter((i) => validInitialIds.has(i.id));
 
             const existingIds = new Set(state.idols.map((i) => i.id));
             const missing = INITIAL_IDOLS.filter((i) => !existingIds.has(i.id));
             if (missing.length > 0) {
-              state.idols = [...state.idols, ...missing].sort((a, b) => b.vote_count - a.vote_count);
+              state.idols = [...state.idols, ...missing];
             }
+
+            // 🛡️ 全面清洗本機快取中的舊文字色塊路徑，換成外部高解析真實立繪
+            state.idols = state.idols.map((idol) => {
+              const realAvatar = getIdolAvatar(idol);
+              return {
+                ...idol,
+                avatar: realAvatar,
+                avatar_url: realAvatar,
+                image_url: realAvatar,
+              };
+            }).sort((a, b) => b.vote_count - a.vote_count);
           }
           if (!state.events || state.events.length === 0) {
             state.events = INITIAL_EVENTS;
@@ -694,6 +766,13 @@ export const useAppStore = create<AppState>()(
           }
           if (state.currentMember === undefined) {
             state.currentMember = INITIAL_PROFILES[0];
+          }
+
+          // 啟動瀏覽器背景無感同步最新 Supabase 資料庫
+          if (typeof window !== "undefined") {
+            setTimeout(() => {
+              state.syncIdolsFromApi?.();
+            }, 100);
           }
         }
       },

@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useAppStore } from "@/lib/store";
 import IdolCard from "@/components/IdolCard";
-import { is2DFranchiseIdol } from "@/lib/utils";
+import { is2DFranchiseIdol, getIdolAvatar } from "@/lib/utils";
 import { MASCOT_QUOTES } from "@/lib/mascotQuotes";
 import { Search, Trophy } from "lucide-react";
 
@@ -32,19 +32,13 @@ export default function IdolsPage() {
     loadLatestIdols();
   }, []);
 
-  // 統一資料來源：資料庫優先，並對齊 image_url / avatar 實體欄位
+  // 統一資料來源：資料庫優先，並對齊 image_url / avatar 實體欄位，徹底排除偽色塊
   const allIdols = useMemo(() => {
     if (dbIdols.length === 0) return idols;
 
     return dbIdols.map((db) => {
       const local = idols.find((i) => i.id === db.id);
-      const finalImg =
-        db.image_url ||
-        db.avatar ||
-        db.avatar_url ||
-        (local as any)?.image_url ||
-        local?.avatar_url ||
-        "";
+      const finalImg = getIdolAvatar(db) || getIdolAvatar(local);
 
       return {
         ...(local || {}),

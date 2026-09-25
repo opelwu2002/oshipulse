@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import Link from "next/link";
 import SafeImage from "@/components/SafeImage";
 import VoteButton from "@/components/VoteButton";
-import { formatNumber, getCountryBadge, getCategoryBadge, is2DFranchiseIdol } from "@/lib/utils";
+import { formatNumber, getCountryBadge, getCategoryBadge, is2DFranchiseIdol, getIdolAvatar } from "@/lib/utils";
 import { Idol } from "@/lib/supabase/types";
 
 export interface IdolCardProps {
@@ -38,14 +38,8 @@ export default function IdolCard({
   const country = getCountryBadge(idol.country || "JP");
   const categoryName = getCategoryBadge(idol.category || "character");
 
-  // 🛡️ 統一資料欄位名稱：嚴格優先匹配 image_url / avatar / avatar_url
-  const rawImageUrl =
-    idol.image_url ||
-    idol.avatar ||
-    idol.avatar_url ||
-    (idol as any).headshot_url ||
-    idol.cover_url ||
-    "";
+  // 🛡️ 權威統一圖片萃取：嚴格優先匹配外部真圖，杜絕偽色塊
+  const rawImageUrl = getIdolAvatar(idol);
 
   // 票數支援 vote_count 或 votes
   const voteCount = idol.vote_count ?? (idol as any).votes ?? 0;

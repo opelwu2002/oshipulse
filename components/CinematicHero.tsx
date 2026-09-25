@@ -5,6 +5,7 @@ import SafeImage from "@/components/SafeImage";
 import { motion, AnimatePresence } from "framer-motion";
 import { Sparkles, Flame, Compass, Award, ArrowRight, Zap, Star } from "lucide-react";
 import { useAppStore } from "@/lib/store";
+import { getIdolAvatar } from "@/lib/utils";
 
 export default function CinematicHero() {
   const { idols, openPersonalityQuiz } = useAppStore();
@@ -123,7 +124,7 @@ export default function CinematicHero() {
               {/* 立繪展示 */}
               <div className="relative w-full aspect-square rounded-2xl overflow-hidden bg-slate-950 mb-4 border border-white/10 shadow-inner">
                 <SafeImage
-                  src={currentHero.avatar_url || (currentHero as any).avatar || (currentHero as any).image_url}
+                  src={getIdolAvatar(currentHero)}
                   alt={currentHero.name}
                   fill
                   sizes="(max-width: 640px) 100vw, 380px"

@@ -183,14 +183,14 @@ CREATE POLICY "Messages full access" ON public.messages FOR ALL USING (true) WIT
 -- 1. 動漫角色與偶像初始名冊
 INSERT INTO public.idols (id, name, work, category, votes, avatar, status)
 VALUES
-  ('char-sung-jinwoo', '成振宇 (Sung Jinwoo)', '《我獨自升級》', '動漫條漫', 58200, '/images/idols/sung-jinwoo.jpg', 'active'),
-  ('char-gojo', '五條悟 (Satoru Gojo)', '《咒術迴戰》', '特級咒術師', 65200, '/images/idols/gojo-satoru.jpg', 'active'),
-  ('idol-jungkook', '田柾國 (Jung Kook)', 'BTS 防彈少年團', 'K-Pop 偶像', 62500, '/images/idols/jungkook.jpg', 'active'),
-  ('idol-wonyoung', '張員瑛 (Wonyoung)', 'IVE', 'K-Pop 偶像', 59800, '/images/idols/wonyoung.jpg', 'active'),
-  ('char-kim-dokja', '金獨子 (Kim Dokja)', '《全知讀者視角》', '動漫條漫', 53100, '/images/idols/kim-dokja.jpg', 'active'),
-  ('char-frieren', '芙莉蓮 (Frieren)', '《葬送的芙莉蓮》', '千年魔法使', 54100, '/images/idols/frieren.jpg', 'active'),
-  ('idol-1', '星街彗星', 'hololive 0期生', '虛擬偶像 VTuber', 48900, '/images/idols/1.jpg', 'active'),
-  ('char-chiikawa', '吉伊卡哇 (Chiikawa)', '《吉伊卡哇》', '超人氣萌物', 46200, '/images/idols/chiikawa.jpg', 'archived')
+  ('char-sung-jinwoo', '成振宇 (Sung Jinwoo)', '《我獨自升級》', '動漫條漫', 58200, 'https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx105398-b673VtlCXHQT.jpg', 'active'),
+  ('char-gojo', '五條悟 (Satoru Gojo)', '《咒術迴戰》', '特級咒術師', 65200, 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx113415-bbBWj4pEFseh.jpg', 'active'),
+  ('idol-jungkook', '田柾國 (Jung Kook)', 'BTS 防彈少年團', 'K-Pop 偶像', 62500, 'https://upload.wikimedia.org/wikipedia/commons/4/4e/BTS_for_Dispatch_White_Day_Special%2C_27_February_2019_01.jpg', 'active'),
+  ('idol-wonyoung', '張員瑛 (Wonyoung)', 'IVE', 'K-Pop 偶像', 59800, 'https://upload.wikimedia.org/wikipedia/commons/thumb/6/6a/230811_Jamboree_K-Pop_Super_Live_IVE.jpg/1200px-230811_Jamboree_K-Pop_Super_Live_IVE.jpg', 'active'),
+  ('char-kim-dokja', '金獨子 (Kim Dokja)', '《全知讀者視角》', '動漫條漫', 53100, 'https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx119257-2VOnp9aL30xG.png', 'active'),
+  ('char-frieren', '芙莉蓮 (Frieren)', '《葬送的芙莉蓮》', '千年魔法使', 54100, 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx154587-g1roJ6R7zJ6C.jpg', 'active'),
+  ('idol-1', '星街彗星', 'hololive 0期生', '虛擬偶像 VTuber', 48900, 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/07/Hoshimachi_Suisei_2023.jpg/800px-Hoshimachi_Suisei_2023.jpg', 'active'),
+  ('char-chiikawa', '吉伊卡哇 (Chiikawa)', '《吉伊卡哇》', '超人氣萌物', 46200, 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx144217-U6P0kHmsj7Uq.jpg', 'archived')
 ON CONFLICT (id) DO NOTHING;
 
 -- 2. 活動排程初始資料
@@ -205,7 +205,7 @@ ON CONFLICT DO NOTHING;
 -- 3. 賽季對決初始資料
 INSERT INTO public.battles (title, season_name, red_name, red_votes, red_avatar, blue_name, blue_votes, blue_avatar, status)
 VALUES
-  ('2026 第一季巔峰拔河冠軍賽', 'Season 1 終局決戰', '成振宇 (Sung Jinwoo)', 128400, '/images/idols/sung-jinwoo.jpg', '五條悟 (Satoru Gojo)', 116500, '/images/idols/gojo-satoru.jpg', 'live')
+  ('2026 第一季巔峰拔河冠軍賽', 'Season 1 終局決戰', '成振宇 (Sung Jinwoo)', 128400, 'https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx105398-b673VtlCXHQT.jpg', '五條悟 (Satoru Gojo)', 116500, 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx113415-bbBWj4pEFseh.jpg', 'live')
 ON CONFLICT DO NOTHING;
 
 -- 4. 聯名許願初始資料

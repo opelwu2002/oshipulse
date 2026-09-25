@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import html2canvas from "html2canvas";
 import { useAppStore } from "@/lib/store";
 import { soundEngine } from "@/lib/audio";
-import { formatNumber, getCountryBadge } from "@/lib/utils";
+import { formatNumber, getCountryBadge, getIdolAvatar } from "@/lib/utils";
 import VoteButton from "./VoteButton";
 import {
   Flame,
@@ -22,7 +22,12 @@ import {
 import { MASCOT_QUOTES } from "@/lib/mascotQuotes";
 
 export default function TugOfWarArena() {
-  const { idols, openShareModal } = useAppStore();
+  const { idols, openShareModal, syncIdolsFromApi } = useAppStore();
+
+  // 🛡️ 即時同步：進入頁面時向 API 取得最新真實角色與立繪
+  useEffect(() => {
+    syncIdolsFromApi?.();
+  }, [syncIdolsFromApi]);
 
   // 取得前兩名
   const sorted = [...idols].sort((a, b) => b.vote_count - a.vote_count);
@@ -173,7 +178,7 @@ export default function TugOfWarArena() {
                 }`}
               >
                 <SafeImage
-                  src={(rank1 as any).image_url || (rank1 as any).avatar || rank1.avatar_url || (rank1 as any).headshot_url}
+                  src={getIdolAvatar(rank1)}
                   alt={rank1.name}
                   fill
                   className="object-cover"
@@ -215,7 +220,7 @@ export default function TugOfWarArena() {
                 }`}
               >
                 <SafeImage
-                  src={(rank2 as any).image_url || (rank2 as any).avatar || rank2.avatar_url || (rank2 as any).headshot_url}
+                  src={getIdolAvatar(rank2)}
                   alt={rank2.name}
                   fill
                   className="object-cover"

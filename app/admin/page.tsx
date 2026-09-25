@@ -396,7 +396,7 @@ export default function AdminPage() {
       name: `${idol.name} (副本)`,
       work: idol.work || '',
       category: idol.category || '',
-      avatar: idol.avatar || idol.avatar_url || idol.image_url || idol.headshot_url || '/images/idols/sung-jinwoo.jpg',
+      avatar: idol.avatar || idol.avatar_url || idol.image_url || idol.headshot_url || 'https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx105398-b673VtlCXHQT.jpg',
       status: 'active',
       votes: Number(idol.votes) || 0,
       match_history: idol.match_history || '',
@@ -1085,7 +1085,7 @@ export default function AdminPage() {
                       name: '',
                       work: '',
                       category: '動漫角色',
-                      avatar: '/images/idols/sung-jinwoo.jpg',
+                      avatar: 'https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx105398-b673VtlCXHQT.jpg',
                       status: 'active',
                       votes: 0,
                       match_history: '',
@@ -1278,14 +1278,14 @@ export default function AdminPage() {
                     <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200 flex flex-col sm:flex-row items-center gap-4">
                       <div className="w-20 h-20 rounded-2xl overflow-hidden shrink-0 border-2 border-pink-200 shadow-sm relative bg-white">
                         <SmartAvatar
-                          src={editingIdol.avatar || '/images/idols/sung-jinwoo.jpg'}
+                          src={editingIdol.avatar || 'https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx105398-b673VtlCXHQT.jpg'}
                           alt={editingIdol.name || '預覽'}
                           className="w-full h-full object-cover"
                         />
                       </div>
                       <div className="flex-1 w-full space-y-1">
                         <label className="block text-xs font-bold text-slate-700">
-                          角色圖片連結 (Image URL / 本地路徑) <span className="text-rose-500">*</span>
+                          角色圖片連結 (Image URL / 網路圖床) <span className="text-rose-500">*</span>
                         </label>
                         <input
                           type="text"
@@ -1294,11 +1294,11 @@ export default function AdminPage() {
                           onChange={(e) =>
                             setEditingIdol({ ...editingIdol, avatar: e.target.value })
                           }
-                          placeholder="/images/idols/sung-jinwoo.jpg 或外部網址"
+                          placeholder="請輸入高解析立繪外鏈 (如 AniList, Wikimedia, Google, Unsplash 等)"
                           className="block w-full rounded-xl border border-slate-300 px-3 py-2 text-xs focus:border-pink-500 focus:ring-1 focus:ring-pink-500 bg-white"
                         />
                         <p className="text-[11px] text-slate-400">
-                          建議優先使用本地路徑（例如 <code className="text-pink-600 font-semibold">/images/idols/xxx.jpg</code>），以避開外部防盜鏈。
+                          支援任何標準 HTTPS 圖片網址，系統已內建防盜鏈繞過與破圖優雅降級機制。
                         </p>
                       </div>
                     </div>
@@ -1474,7 +1474,7 @@ export default function AdminPage() {
                     <div className="text-center p-4 bg-rose-500/10 rounded-2xl border border-rose-500/20">
                       <div className="w-16 h-16 rounded-full overflow-hidden mx-auto mb-2 border-2 border-rose-500">
                         <SmartAvatar
-                          src={battleData.red_avatar || '/images/idols/sung-jinwoo.jpg'}
+                          src={battleData.red_avatar || 'https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx105398-b673VtlCXHQT.jpg'}
                           alt={battleData.red_name}
                           className="w-full h-full object-cover"
                         />
@@ -1489,7 +1489,7 @@ export default function AdminPage() {
                     <div className="text-center p-4 bg-blue-500/10 rounded-2xl border border-blue-500/20">
                       <div className="w-16 h-16 rounded-full overflow-hidden mx-auto mb-2 border-2 border-blue-500">
                         <SmartAvatar
-                          src={battleData.blue_avatar || '/images/idols/gojo-satoru.jpg'}
+                          src={battleData.blue_avatar || 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx113415-bbBWj4pEFseh.jpg'}
                           alt={battleData.blue_name}
                           className="w-full h-full object-cover"
                         />

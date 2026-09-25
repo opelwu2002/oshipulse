@@ -13,6 +13,8 @@ import {
   formatCurrency,
   getCountryBadge,
   getCategoryBadge,
+  is2DFranchiseIdol,
+  getIdolAvatar,
 } from "@/lib/utils";
 import {
   Flame,
@@ -27,8 +29,6 @@ import {
   HeartHandshake,
   TrendingUp,
 } from "lucide-react";
-
-import { is2DFranchiseIdol } from "@/lib/utils";
 
 export default function HomePage() {
   const {
@@ -59,19 +59,13 @@ export default function HomePage() {
     loadLatestIdols();
   }, []);
 
-  // 統一資料來源：資料庫優先，並對齊 image_url / avatar 實體欄位
+  // 統一資料來源：資料庫優先，並對齊 image_url / avatar 實體欄位，徹底排除偽色塊
   const allIdols = useMemo(() => {
     if (dbIdols.length === 0) return idols;
 
     return dbIdols.map((db) => {
       const local = idols.find((i) => i.id === db.id);
-      const finalImg =
-        db.image_url ||
-        db.avatar ||
-        db.avatar_url ||
-        (local as any)?.image_url ||
-        local?.avatar_url ||
-        "";
+      const finalImg = getIdolAvatar(db) || getIdolAvatar(local);
 
       return {
         ...(local || {}),
@@ -234,7 +228,7 @@ export default function HomePage() {
                       </span>
                       <div className="relative w-12 h-12 rounded-xl overflow-hidden shrink-0 border border-slate-200">
                         <SafeImage
-                          src={(idol as any).image_url || (idol as any).avatar || idol.avatar_url || (idol as any).headshot_url}
+                          src={getIdolAvatar(idol)}
                           alt={idol.name}
                           fill
                           className="object-cover"

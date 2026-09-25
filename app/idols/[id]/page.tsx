@@ -11,6 +11,8 @@ import {
   formatCurrency,
   getCountryBadge,
   getCategoryBadge,
+  getIdolAvatar,
+  getIdolCover,
 } from "@/lib/utils";
 import {
   Sparkles,
@@ -53,16 +55,26 @@ export default function IdolDetailPage() {
   }, [id]);
 
   const baseIdol = idols.find((i) => i.id === id) || idols[0];
+  const realAvatar = getIdolAvatar(dbIdol) || getIdolAvatar(baseIdol);
+  const realCover = getIdolCover(dbIdol) || getIdolCover(baseIdol);
+
   const idol: any = dbIdol
     ? {
         ...baseIdol,
         ...dbIdol,
-        image_url: dbIdol.image_url || dbIdol.avatar || dbIdol.avatar_url || baseIdol?.avatar_url || "",
-        avatar: dbIdol.avatar || dbIdol.image_url || dbIdol.avatar_url || baseIdol?.avatar_url || "",
-        avatar_url: dbIdol.image_url || dbIdol.avatar || dbIdol.avatar_url || baseIdol?.avatar_url || "",
+        image_url: realAvatar,
+        avatar: realAvatar,
+        avatar_url: realAvatar,
+        cover_url: realCover,
         vote_count: Number(dbIdol.votes ?? dbIdol.vote_count ?? baseIdol?.vote_count ?? 0),
       }
-    : baseIdol;
+    : {
+        ...baseIdol,
+        image_url: realAvatar,
+        avatar: realAvatar,
+        avatar_url: realAvatar,
+        cover_url: realCover,
+      };
 
   const relatedProducts = products.filter((p) => p.idol_id === idol?.id);
 
@@ -105,7 +117,7 @@ export default function IdolDetailPage() {
         {/* 16:9 封面 */}
         <div className="relative w-full aspect-[16/9] max-h-96">
           <SafeImage
-            src={idol.cover_url || (idol as any).cover || (idol as any).banner_url || "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=1200"}
+            src={getIdolCover(idol)}
             alt={`${idol.name} 封面`}
             fill
             className="object-cover opacity-80"
@@ -121,7 +133,7 @@ export default function IdolDetailPage() {
             {/* 1:1 頭像 */}
             <div className="relative w-24 h-24 sm:w-36 sm:h-36 rounded-3xl overflow-hidden border-4 border-white shadow-2xl shrink-0 bg-slate-100">
               <SafeImage
-                src={(idol as any).image_url || (idol as any).avatar || idol.avatar_url || (idol as any).headshot_url}
+                src={getIdolAvatar(idol)}
                 alt={idol.name}
                 fill
                 className="object-cover"
@@ -180,7 +192,7 @@ export default function IdolDetailPage() {
                   >
                     <div className="relative w-12 h-12 rounded-xl overflow-hidden bg-slate-200 shrink-0">
                       <SafeImage
-                        src={member.avatar_url || (member as any).avatar || (member as any).image_url}
+                        src={getIdolAvatar(member) || getIdolAvatar(idol)}
                         alt={member.name}
                         fill
                         className="object-cover"

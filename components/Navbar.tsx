@@ -39,9 +39,11 @@ export default function Navbar() {
     bonusVotes,
     currentMember,
     setCurrentMember,
+    syncIdolsFromApi,
   } = useAppStore();
 
   useEffect(() => {
+    syncIdolsFromApi?.();
     checkUser();
     checkAdminAuth();
 
