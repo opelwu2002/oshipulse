@@ -34,22 +34,46 @@ function getGradientTheme(name: string) {
 
 /**
  * 自動解析可能的圖片來源屬性 (avatar, avatar_url, image_url, headshot_url, cover_url)
+ * 支援協定補齊、去除外層引號與 Google 圖片搜尋跳轉網址解析
  */
 function resolveImageUrl(srcInput: any): string {
   if (!srcInput) return "";
-  if (typeof srcInput === "string") return srcInput.trim();
-  if (typeof srcInput === "object") {
-    return (
+  let raw = "";
+  if (typeof srcInput === "string") {
+    raw = srcInput;
+  } else if (typeof srcInput === "object") {
+    raw =
       srcInput.avatar ||
       srcInput.avatar_url ||
       srcInput.image_url ||
       srcInput.headshot_url ||
       srcInput.cover_url ||
       srcInput.src ||
-      ""
-    ).trim();
+      "";
   }
-  return "";
+
+  if (!raw || typeof raw !== "string") return "";
+  let url = raw.trim().replace(/^['"]|['"]$/g, ""); // 去除外層引號
+
+  // 若以雙斜線開頭 (Protocol-relative URL)，自動補齊 https:
+  if (url.startsWith("//")) {
+    url = `https:${url}`;
+  }
+
+  // 若使用者貼上 Google 圖片搜尋跳轉網址，自動提純真實圖片連結
+  if (url.includes("google.com/imgres") || url.includes("google.com/url")) {
+    try {
+      const parsed = new URL(url);
+      const extracted = parsed.searchParams.get("imgurl") || parsed.searchParams.get("url");
+      if (extracted) {
+        url = decodeURIComponent(extracted);
+      }
+    } catch {
+      // 保持原始 url
+    }
+  }
+
+  return url;
 }
 
 /**
