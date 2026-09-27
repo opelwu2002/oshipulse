@@ -10,6 +10,7 @@ import { ShoppingBag, Lock, Sparkles, Check, Filter, Heart, AlertCircle } from "
 export default function StorePage() {
   const { products, idols, addToCart, bonusVotes, openShareModal } = useAppStore();
   const [dbInventory, setDbInventory] = useState<any[]>([]);
+  const [isLoaded, setIsLoaded] = useState<boolean>(false);
   const [filterType, setFilterType] = useState<"ALL" | "collab_exclusive" | "official_regular">("ALL");
 
   // 🛡️ 即時同步：載入後台資料庫 shop_inventory 即時商品售價與庫存
@@ -18,39 +19,39 @@ export default function StorePage() {
       try {
         const res = await fetch(`/api/admin/inventory?t=${Date.now()}`);
         const json = await res.json();
-        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+        if (json.success && Array.isArray(json.data)) {
           setDbInventory(json.data);
+          setIsLoaded(true);
         }
       } catch (err) {
-        console.warn("載入資料庫商品庫存失敗，使用本地備援:", err);
+        console.warn("載入資料庫商品庫存失敗:", err);
       }
     }
     loadInventory();
   }, []);
 
-  // 統合商品資料（資料庫 shop_inventory 優先，確保售價與庫存件數即時同步）
+  // 100% 依據 Supabase 資料庫真實庫存，徹底拔除靜態假資料回退
   const allProducts = useMemo(() => {
-    if (dbInventory.length > 0) {
-      return dbInventory.map((db) => {
-        const local = products.find((p) => p.id === db.id);
-        return {
-          id: db.id,
-          idol_id: db.idol_id || local?.idol_id || "idol-1",
-          collab_id: local?.collab_id || null,
-          source_type: db.source_type || local?.source_type || "collab_exclusive",
-          title: db.title || local?.title || "官方限定周邊",
-          description: db.description || local?.description || "",
-          price: Number(db.price ?? local?.price ?? 980),
-          stock: Number(db.stock ?? local?.stock ?? 0),
-          min_votes_to_buy: Number(db.min_votes_to_buy ?? local?.min_votes_to_buy ?? 0),
-          images: [db.image_url || local?.images?.[0] || "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=600"],
-          is_active: db.is_active ?? true,
-          created_at: db.created_at || local?.created_at || new Date().toISOString(),
-        };
-      });
-    }
-    return products;
-  }, [dbInventory, products]);
+    if (!isLoaded) return [];
+
+    return dbInventory.map((db) => {
+      const local = products.find((p) => p.id === db.id);
+      return {
+        id: db.id,
+        idol_id: db.idol_id || local?.idol_id || "idol-1",
+        collab_id: local?.collab_id || null,
+        source_type: db.source_type || local?.source_type || "collab_exclusive",
+        title: db.title || local?.title || "官方限定周邊",
+        description: db.description || local?.description || "",
+        price: Number(db.price ?? local?.price ?? 980),
+        stock: Number(db.stock ?? local?.stock ?? 0),
+        min_votes_to_buy: Number(db.min_votes_to_buy ?? local?.min_votes_to_buy ?? 0),
+        images: [db.image_url || local?.images?.[0] || "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=600"],
+        is_active: db.is_active ?? true,
+        created_at: db.created_at || local?.created_at || new Date().toISOString(),
+      };
+    });
+  }, [dbInventory, isLoaded, products]);
 
   const filteredProducts = allProducts.filter((p) => {
     if (filterType === "ALL") return true;
@@ -83,7 +84,7 @@ export default function StorePage() {
               : "bg-slate-100 text-slate-600 hover:bg-slate-200"
           }`}
         >
-          全部周邊 ({products.length})
+          全部周邊 ({allProducts.length})
         </button>
         <button
           onClick={() => setFilterType("collab_exclusive")}
@@ -107,9 +108,28 @@ export default function StorePage() {
         </button>
       </div>
 
-      {/* 商品卡片列表 */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-        {filteredProducts.map((product) => {
+      {/* 商品卡片列表 / 空狀態 */}
+      {filteredProducts.length === 0 ? (
+        <div className="bento-card p-12 text-center flex flex-col items-center justify-center space-y-4 bg-slate-50/50">
+          <div className="w-16 h-16 rounded-3xl bg-purple-50 text-cyber-purple flex items-center justify-center">
+            <ShoppingBag className="w-8 h-8" />
+          </div>
+          <div className="space-y-1">
+            <h3 className="text-lg font-black text-slate-900">目前尚無周邊商品上架</h3>
+            <p className="text-sm text-slate-500 max-w-md mx-auto">
+              官方直營周邊與聯名限定特企商品正全力整備中，請鎖定最新上架公告！
+            </p>
+          </div>
+          <Link
+            href="/"
+            className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
+          >
+            返回應援首頁
+          </Link>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+          {filteredProducts.map((product) => {
           const idol = idols.find((i) => i.id === product.idol_id);
           const isLocked = product.min_votes_to_buy > 0 && bonusVotes < product.min_votes_to_buy;
 
@@ -209,6 +229,7 @@ export default function StorePage() {
           );
         })}
       </div>
+      )}
     </div>
   );
 }

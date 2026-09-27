@@ -68,7 +68,11 @@ export default function HomePage() {
             setDbPledge(pledgesJson.pledge);
           } else if (Array.isArray(pledgesJson.data) && pledgesJson.data.length > 0) {
             setDbPledge(pledgesJson.data[0]);
+          } else {
+            setDbPledge(null);
           }
+        } else {
+          setDbPledge(null);
         }
 
         const inventoryJson = await inventoryRes.json();
@@ -77,10 +81,14 @@ export default function HomePage() {
             setDbFeaturedProduct(inventoryJson.featured);
           } else if (Array.isArray(inventoryJson.data) && inventoryJson.data.length > 0) {
             setDbFeaturedProduct(inventoryJson.data[0]);
+          } else {
+            setDbFeaturedProduct(null);
           }
+        } else {
+          setDbFeaturedProduct(null);
         }
       } catch (err) {
-        console.warn("首頁載入資料庫資料失敗，使用本地備援:", err);
+        console.warn("首頁載入資料庫資料失敗:", err);
       }
     }
     loadLatestData();
@@ -123,10 +131,8 @@ export default function HomePage() {
   const topFive = sortedIdols.slice(0, 5);
 
   const activeBattle = battles.find((b) => b.status === "live") || battles[0];
-  const featuredCollab = collabs[0];
-  const featuredProduct = products[0];
 
-  // 🛡️ 應援許願池 (Pledging)：優先使用資料庫中進行中項目，若無則降級為本地項目
+  // 🛡️ 應援許願池 (Pledging)：100% 依據 Supabase 資料庫真實資料，徹底切斷靜態假資料回退
   const displayPledge = useMemo(() => {
     if (dbPledge) {
       const cur = Number(dbPledge.current_votes || 0);
@@ -144,49 +150,23 @@ export default function HomePage() {
         percent: tar > 0 ? Math.round((cur / tar) * 100) : 0,
       };
     }
-    if (featuredCollab) {
-      const cur = featuredCollab.pledge_count || 0;
-      const tar = featuredCollab.pledge_goal || 10000;
-      return {
-        id: featuredCollab.id,
-        title: featuredCollab.title,
-        description: featuredCollab.details_markdown,
-        current_votes: cur,
-        target_votes: tar,
-        image_url: featuredCollab.banner_url || null,
-        start_time: null,
-        end_time: null,
-        status: 'active',
-        percent: tar > 0 ? Math.round((cur / tar) * 100) : 0,
-      };
-    }
     return null;
-  }, [dbPledge, featuredCollab]);
+  }, [dbPledge]);
 
-  // 🛡️ 商城周邊推薦：優先使用資料庫中的推薦商品（星街彗星手燈），售價與剩餘庫存完全同步
+  // 🛡️ 商城周邊推薦：100% 依據 Supabase 資料庫 shop_inventory 真實資料，徹底切斷靜態假資料回退
   const displayProduct = useMemo(() => {
     if (dbFeaturedProduct) {
       return {
         id: dbFeaturedProduct.id,
         title: dbFeaturedProduct.title,
         price: Number(dbFeaturedProduct.price || 980),
-        stock: Number(dbFeaturedProduct.stock || 120),
+        stock: Number(dbFeaturedProduct.stock || 0),
         min_votes_to_buy: Number(dbFeaturedProduct.min_votes_to_buy || 0),
         image: dbFeaturedProduct.image_url || "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=600",
       };
     }
-    if (featuredProduct) {
-      return {
-        id: featuredProduct.id,
-        title: featuredProduct.title,
-        price: featuredProduct.price,
-        stock: featuredProduct.stock,
-        min_votes_to_buy: featuredProduct.min_votes_to_buy,
-        image: featuredProduct.images[0],
-      };
-    }
     return null;
-  }, [dbFeaturedProduct, featuredProduct]);
+  }, [dbFeaturedProduct]);
 
   const filterTabs = [
     { code: "ALL", name: "全部本命與角色" },
@@ -413,7 +393,7 @@ export default function HomePage() {
         )}
 
         {/* 卡片 3: 應援許願池 (Pledging) 連動預告 */}
-        {displayPledge && (
+        {displayPledge ? (
           <div className="bento-card col-span-1 md:col-span-1 lg:col-span-2 p-6 flex flex-col justify-between relative overflow-hidden group">
             <div>
               <div className="flex items-center justify-between mb-3">
@@ -470,10 +450,36 @@ export default function HomePage() {
               </Link>
             </div>
           </div>
+        ) : (
+          <div className="bento-card col-span-1 md:col-span-1 lg:col-span-2 p-6 flex flex-col justify-between items-center text-center py-10 relative overflow-hidden group bg-slate-50/50">
+            <div className="w-12 h-12 rounded-2xl bg-rose-50 text-cyber-rose flex items-center justify-center mb-2">
+              <Sparkles className="w-6 h-6 animate-pulse" />
+            </div>
+            <div>
+              <span className="px-2.5 py-0.5 bg-slate-100 text-slate-500 rounded-full text-[10px] font-black uppercase mb-1.5 inline-block">
+                Pledging Status
+              </span>
+              <h3 className="text-base font-black text-slate-900 mb-1">
+                目前尚無進行中的應援許願池
+              </h3>
+              <p className="text-xs text-slate-500 max-w-xs mx-auto leading-relaxed">
+                管理員尚未開啟新一期的偶像聯名集氣願望，敬請期待下一輪企劃公布！
+              </p>
+            </div>
+            <div className="pt-4 border-t border-slate-100 w-full flex items-center justify-center">
+              <Link
+                href="/collabs"
+                className="text-xs font-bold text-cyber-rose hover:underline flex items-center gap-1"
+              >
+                <span>瀏覽往期企劃專區</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
+            </div>
+          </div>
         )}
 
         {/* 卡片 4: 官方限量周邊特企（連動商城庫存 shop_inventory） */}
-        {displayProduct && (
+        {displayProduct ? (
           <div className="bento-card col-span-1 md:col-span-1 lg:col-span-2 p-6 flex flex-col justify-between">
             <div className="flex gap-4">
               <div className="relative w-28 h-28 rounded-2xl overflow-hidden bg-slate-100 shrink-0 border border-slate-200">
@@ -513,6 +519,32 @@ export default function HomePage() {
                 className="px-4 py-2 bg-gradient-to-r from-cyber-rose to-cyber-violet text-white text-xs font-bold rounded-xl shadow-md hover:opacity-95 transition-all"
               >
                 前往商城專區
+              </Link>
+            </div>
+          </div>
+        ) : (
+          <div className="bento-card col-span-1 md:col-span-1 lg:col-span-2 p-6 flex flex-col justify-between items-center text-center py-10 relative overflow-hidden group bg-slate-50/50">
+            <div className="w-12 h-12 rounded-2xl bg-purple-50 text-cyber-purple flex items-center justify-center mb-2">
+              <ShoppingBag className="w-6 h-6" />
+            </div>
+            <div>
+              <span className="px-2.5 py-0.5 bg-slate-100 text-slate-500 rounded-full text-[10px] font-black uppercase mb-1.5 inline-block">
+                Official Merch
+              </span>
+              <h3 className="text-base font-black text-slate-900 mb-1">
+                目前尚無特企周邊上架
+              </h3>
+              <p className="text-xs text-slate-500 max-w-xs mx-auto leading-relaxed">
+                官方正版周邊與限定企劃籌備中，敬請關注商城專區最新上架資訊！
+              </p>
+            </div>
+            <div className="pt-4 border-t border-slate-100 w-full flex items-center justify-center">
+              <Link
+                href="/store"
+                className="text-xs font-bold text-cyber-violet hover:underline flex items-center gap-1"
+              >
+                <span>前往商城專區</span>
+                <ArrowRight className="w-3.5 h-3.5" />
               </Link>
             </div>
           </div>

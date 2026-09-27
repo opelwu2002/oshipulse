@@ -85,8 +85,8 @@ export async function GET() {
       });
     }
 
-    const items = data && data.length > 0 ? data : FALLBACK_INVENTORY;
-    // 首頁推薦：優先尋找星街彗星互動手燈 (prod-1) 或第一個活躍商品
+    // 🛡️ 當資料庫成功查詢時，100% 依據資料庫實際筆數（刪光則為空陣列），絕不強制回填假商品
+    const items = data || [];
     const featured = items.find((p: any) => p.id === "prod-1") || items[0] || null;
 
     return NextResponse.json({

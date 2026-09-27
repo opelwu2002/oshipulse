@@ -100,58 +100,8 @@ export const INITIAL_PROFILES: Profile[] = [
   },
 ];
 
-export const INITIAL_EVENTS: EventData[] = [
-  {
-    id: "evt-1",
-    title: "【特企】成振宇《我獨自升級》全球首映與暗影特展",
-    publish_start_date: "2026-06-01T00:00",
-    publish_end_date: "2026-12-31T23:59",
-    event_start_date: "2026-08-10T10:00",
-    event_end_date: "2026-08-25T20:00",
-    image_url: "https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx105398-b673VtlCXHQT.jpg",
-    description: "全台獵人集合！體驗成振宇『起來 (Arise)』超震撼暗影提取空間，現場獨家釋出專屬應援票券與限量周邊。",
-    is_physical: true,
-    address: "台北市中正區市民大道三段2號 (三創生活園區 1F)",
-    google_maps_url: "https://www.google.com/maps/search/?api=1&query=%E5%8F%B0%E5%8C%97%E5%B8%82%E4%B8%AD%E6%AD%A3%E5%8D%80%E5%B8%82%E6%B0%91%E5%A4%A7%E9%81%93%E4%B8%89%E6%AE%B52%E8%99%9F",
-  },
-  {
-    id: "evt-2",
-    title: "【應援展】BTS 田柾國《GOLDEN》線下聲量咖啡廳與影像特展",
-    publish_start_date: "2026-07-01T00:00",
-    publish_end_date: "2026-11-30T23:59",
-    event_start_date: "2026-09-01T11:00",
-    event_end_date: "2026-09-15T19:00",
-    image_url: "https://upload.wikimedia.org/wikipedia/commons/4/4e/BTS_for_Dispatch_White_Day_Special%2C_27_February_2019_01.jpg",
-    description: "慶祝黃金忙內 Seven 突破歷史紀錄！現場展出歷年珍貴打歌服與應援手燈連動光雕秀。",
-    is_physical: true,
-    address: "台北市中山區南京西路14號 (誠品生活南西門市特區)",
-    google_maps_url: "https://www.google.com/maps/search/?api=1&query=%E5%8F%B0%E5%8C%97%E5%B8%82%E4%B8%AD%E5%B1%B1%E5%8D%80%E5%8D%97%E4%BA%AC%E8%A5%BF%E8%B7%AF14%E8%99%9F",
-  },
-  {
-    id: "evt-3",
-    title: "【線上連動】張員瑛 IVE 專屬 Lucky Vicky 幸運願望池",
-    publish_start_date: "2026-05-01T00:00",
-    publish_end_date: "2026-12-31T23:59",
-    event_start_date: "2026-06-01T00:00",
-    event_end_date: "2026-12-31T23:59",
-    image_url: "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6a/230811_Jamboree_K-Pop_Super_Live_IVE.jpg/1200px-230811_Jamboree_K-Pop_Super_Live_IVE.jpg",
-    description: "參與線上幸運打氣，集氣達成解鎖全亞洲戶外電視牆投放與全球抽獎好禮！",
-    is_physical: false,
-  },
-  {
-    id: "evt-4",
-    title: "【巡迴展】咒術迴戰 五條悟「無量空處」沉浸式領域展開展",
-    publish_start_date: "2026-06-15T00:00",
-    publish_end_date: "2026-10-31T23:59",
-    event_start_date: "2026-07-01T10:00",
-    event_end_date: "2026-08-31T18:00",
-    image_url: "https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx113415-bbBWj4pEFseh.jpg",
-    description: "特級咒術師五條悟涉谷高光重現，360度環形投影重溫無限咒力奧義。",
-    is_physical: true,
-    address: "台北市信義區光復南路133號 (松山文創園區 2號倉庫)",
-    google_maps_url: "https://www.google.com/maps/search/?api=1&query=%E5%8F%B0%E5%8C%97%E5%B8%82%E4%BF%A1%E7%BE%A9%E5%8D%80%E5%85%89%E5%BE%A9%E5%8D%97%E8%B7%AF133%E8%99%9F",
-  },
-];
+// 🛡️ 徹底切斷前端寫死活動 Mock：活動排程 100% 來自後台與 Supabase events 資料表
+export const INITIAL_EVENTS: EventData[] = [];
 
 export interface CartItem {
   product: Product;

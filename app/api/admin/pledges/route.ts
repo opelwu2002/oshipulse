@@ -64,7 +64,8 @@ export async function GET() {
       );
     }
 
-    const pledges = data && data.length > 0 ? data : FALLBACK_PLEDGES;
+    // 🛡️ 當資料庫成功查詢時，100% 依據資料庫實際筆數（刪光則為空陣列），絕不強制回填假許願池
+    const pledges = data || [];
     const now = new Date();
 
     // 智能判斷：篩選狀態為 active 且在有效時間區間內的願望池
@@ -75,13 +76,12 @@ export async function GET() {
       return true;
     });
 
-    // 優先選取星街彗星願望池或第一筆進行中願望池
+    // 優先選取星街彗星願望池或第一筆進行中願望池，若無進行中則為 null
     const activePledge =
       activePledges.find((p: any) => p.title?.includes("星街")) ||
       activePledges[0] ||
       pledges.find((p: any) => p.status === "active") ||
-      pledges[0] ||
-      FALLBACK_PLEDGES[0];
+      null;
 
     return NextResponse.json({
       success: true,
