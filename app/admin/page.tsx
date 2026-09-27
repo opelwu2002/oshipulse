@@ -47,12 +47,16 @@ export default function AdminPage() {
   // ==========================================
   const [eventsList, setEventsList] = useState<any[]>([])
   const [isAddingEvent, setIsAddingEvent] = useState(false)
+  const [editingEventId, setEditingEventId] = useState<number | string | null>(null)
+  const [isSavingEvent, setIsSavingEvent] = useState(false)
   const [newEvent, setNewEvent] = useState({
     title: '',
     description: '',
     status: '上架展示中',
     event_type: '線下實體展',
     location: '',
+    start_time: '',
+    end_time: '',
   })
 
   // ==========================================
@@ -122,13 +126,52 @@ export default function AdminPage() {
     if (activeTab === 'members') fetchMembers()
   }, [activeTab])
 
+  // --- 活動時間格式化輔助函數 ---
+  function formatToDatetimeLocal(isoString?: string | null): string {
+    if (!isoString) return ''
+    try {
+      const d = new Date(isoString)
+      if (isNaN(d.getTime())) return ''
+      const pad = (n: number) => n.toString().padStart(2, '0')
+      const yyyy = d.getFullYear()
+      const MM = pad(d.getMonth() + 1)
+      const dd = pad(d.getDate())
+      const hh = pad(d.getHours())
+      const mm = pad(d.getMinutes())
+      return `${yyyy}-${MM}-${dd}T${hh}:${mm}`
+    } catch {
+      return ''
+    }
+  }
+
+  function formatDisplayDateTime(isoString?: string | null): string {
+    if (!isoString) return ''
+    try {
+      const d = new Date(isoString)
+      if (isNaN(d.getTime())) return ''
+      return d.toLocaleString('zh-TW', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      })
+    } catch {
+      return ''
+    }
+  }
+
   // --- API 請求函數 ---
 
   // 1. 活動
   async function fetchEvents() {
     setLoading(true)
     try {
-      const res = await fetch('/api/admin/events')
+      const res = await fetch(`/api/admin/events?t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate' },
+      })
       const json = await res.json()
       if (json.tableMissing) {
         setTableMissingWarning('events')
@@ -142,46 +185,119 @@ export default function AdminPage() {
     }
   }
 
-  async function handleCreateEvent(e: React.FormEvent) {
+  // 點擊卡片編輯按鈕，帶入編輯模式
+  function handleEditEventClick(event: any) {
+    setEditingEventId(event.id)
+    setNewEvent({
+      title: event.title || '',
+      description: event.description || '',
+      status: event.status || '上架展示中',
+      event_type: event.event_type || '線下實體展',
+      location: event.location || '',
+      start_time: formatToDatetimeLocal(event.start_time),
+      end_time: formatToDatetimeLocal(event.end_time),
+    })
+    setIsAddingEvent(true)
+    // 平滑滾動至上方表單位置
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 120, behavior: 'smooth' })
+    }
+  }
+
+  // 取消編輯模式回到預設狀態
+  function handleCancelEditEvent() {
+    setEditingEventId(null)
+    setIsAddingEvent(false)
+    setNewEvent({
+      title: '',
+      description: '',
+      status: '上架展示中',
+      event_type: '線下實體展',
+      location: '',
+      start_time: '',
+      end_time: '',
+    })
+  }
+
+  // 儲存活動（支援新增 POST 與編輯更新 PUT）
+  async function handleSaveEvent(e: React.FormEvent) {
     e.preventDefault()
+    setIsSavingEvent(true)
     try {
       const googleMapsUrl = newEvent.location
         ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(newEvent.location)}`
         : null
 
+      const payload: any = {
+        title: (newEvent.title || '').trim(),
+        description: (newEvent.description || '').trim(),
+        status: newEvent.status || '上架展示中',
+        event_type: newEvent.event_type || '線下實體展',
+        location: (newEvent.location || '').trim(),
+        google_maps_url: googleMapsUrl,
+        start_time: newEvent.start_time ? new Date(newEvent.start_time).toISOString() : null,
+        end_time: newEvent.end_time ? new Date(newEvent.end_time).toISOString() : null,
+      }
+
+      const isEditing = Boolean(editingEventId)
+      if (isEditing) {
+        payload.id = editingEventId
+      }
+
+      // 1. 發送 API 請求（PUT 編輯 / POST 新增）
+      const method = isEditing ? 'PUT' : 'POST'
       const res = await fetch('/api/admin/events', {
-        method: 'POST',
+        method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...newEvent, google_maps_url: googleMapsUrl }),
+        body: JSON.stringify(payload),
       })
       const json = await res.json()
-      if (json.success) {
-        setMessage('✅ 活動檔期已成功寫入資料庫！')
-        setIsAddingEvent(false)
-        setNewEvent({
-          title: '',
-          description: '',
-          status: '上架展示中',
-          event_type: '線下實體展',
-          location: '',
-        })
-        fetchEvents()
-      } else {
-        alert(json.message || '新增失敗')
+
+      // 2. 備援直連 Supabase
+      if (!json.success) {
+        if (isEditing) {
+          const { error } = await supabase.from('events').update(payload).eq('id', editingEventId)
+          if (error) throw new Error(error.message)
+        } else {
+          const { error } = await supabase.from('events').insert([payload])
+          if (error) throw new Error(error.message)
+        }
       }
+
+      setMessage(
+        isEditing
+          ? `✅ 活動檔期【${payload.title}】已成功更新並同步至資料庫！`
+          : `🎉 活動檔期【${payload.title}】已成功建立並寫入資料庫！`
+      )
+
+      handleCancelEditEvent()
+      await fetchEvents()
     } catch (e: any) {
-      alert(e.message)
+      console.error('儲存活動失敗:', e)
+      alert(`❌ 儲存活動失敗：${e.message || '無法寫入資料庫'}`)
+    } finally {
+      setIsSavingEvent(false)
     }
   }
 
   async function handleDeleteEvent(id: number | string) {
-    if (!confirm('確定要從資料庫刪除此檔活動嗎？')) return
+    if (!confirm('⚠️ 確定要從資料庫徹底刪除此檔活動嗎？刪除後不可復原！')) return
     try {
       const res = await fetch(`/api/admin/events?id=${id}`, { method: 'DELETE' })
       const json = await res.json()
       if (json.success) {
         setMessage('🗑️ 活動已成功從資料庫刪除')
+        setEventsList((prev) => prev.filter((ev) => ev.id !== id))
         fetchEvents()
+      } else {
+        const { error } = await supabase.from('events').delete().eq('id', id)
+        if (!error) {
+          setMessage('🗑️ 活動已成功從資料庫刪除')
+          setEventsList((prev) => prev.filter((ev) => ev.id !== id))
+          fetchEvents()
+        } else {
+          throw new Error(json.message || error.message)
+        }
       }
     } catch (e: any) {
       alert(e.message)
@@ -204,6 +320,8 @@ export default function AdminPage() {
           event_type: event.event_type,
           location: event.location,
           google_maps_url: googleMapsUrl,
+          start_time: event.start_time || null,
+          end_time: event.end_time || null,
         }),
       })
       const json = await res.json()
@@ -1028,31 +1146,62 @@ export default function AdminPage() {
                   </span>
                 </div>
                 <p className="text-sm text-slate-500 max-w-2xl leading-relaxed">
-                  直接對接 Supabase 資料庫。支援設定活動名稱、實體地點 Google Maps
-                  連動、複製活動副本與刪除管理。
+                  直接對接 Supabase 資料庫。支援設定活動名稱、起訖時間區間、實體地點 Google Maps
+                  連動、完整活動編輯、複製活動副本與刪除管理。
                 </p>
               </div>
               <button
-                onClick={() => setIsAddingEvent(!isAddingEvent)}
+                onClick={() => {
+                  if (isAddingEvent && editingEventId) {
+                    handleCancelEditEvent()
+                  } else {
+                    setIsAddingEvent(!isAddingEvent)
+                  }
+                }}
                 className="flex items-center gap-1.5 px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-sm font-bold rounded-xl transition-colors shrink-0 shadow-md cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
-                {isAddingEvent ? '取消新增' : '新增活動檔期'}
+                {isAddingEvent ? (editingEventId ? '取消編輯' : '收起表單') : '+ 新增活動檔期'}
               </button>
             </div>
 
-            {/* 新增活動表單 */}
+            {/* 新增 / 編輯活動表單 */}
             {isAddingEvent && (
               <form
-                onSubmit={handleCreateEvent}
-                className="mb-8 p-6 bg-slate-50 border border-slate-200 rounded-2xl space-y-4"
+                onSubmit={handleSaveEvent}
+                className="mb-8 p-6 bg-slate-50 border border-slate-200 rounded-2xl space-y-4 animate-in fade-in duration-200"
               >
-                <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-pink-500" /> 新增檔期活動
-                </h3>
+                <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+                  <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+                    {editingEventId ? (
+                      <>
+                        <Edit className="w-4 h-4 text-pink-500" />
+                        <span>✏️ 正在編輯活動檔期：【{newEvent.title || '未命名'}】</span>
+                        <span className="text-xs font-mono font-normal text-slate-400">ID: #{editingEventId}</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4 text-pink-500" />
+                        <span>新增檔期活動</span>
+                      </>
+                    )}
+                  </h3>
+                  {editingEventId && (
+                    <button
+                      type="button"
+                      onClick={handleCancelEditEvent}
+                      className="text-xs font-bold text-slate-500 hover:text-slate-800 hover:bg-slate-200/60 px-2.5 py-1 rounded-lg transition cursor-pointer"
+                    >
+                      ✕ 放棄編輯
+                    </button>
+                  )}
+                </div>
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">活動名稱</label>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      活動名稱 <span className="text-rose-500">*</span>
+                    </label>
                     <input
                       type="text"
                       required
@@ -1072,6 +1221,8 @@ export default function AdminPage() {
                       <option value="線下實體展">線下實體展</option>
                       <option value="線上數位展">線上數位展</option>
                       <option value="跨界快閃店">跨界快閃店</option>
+                      <option value="大型演唱會">大型演唱會</option>
+                      <option value="粉絲見面會">粉絲見面會</option>
                     </select>
                   </div>
                   <div>
@@ -1091,11 +1242,41 @@ export default function AdminPage() {
                       onChange={(e) => setNewEvent({ ...newEvent, status: e.target.value })}
                       className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-pink-500"
                     >
-                      <option value="上架展示中">上架展示中</option>
-                      <option value="排程準備中">排程準備中</option>
-                      <option value="已結束">已結束</option>
+                      <option value="上架展示中">上架展示中 (前台展示)</option>
+                      <option value="排程準備中">排程準備中 (籌備未開放)</option>
+                      <option value="已結束">已結束 (歷史存檔)</option>
                     </select>
                   </div>
+
+                  {/* 🌟 活動起訖時間區間設定 (Start Time & End Time) */}
+                  <div className="bg-purple-50/50 p-3.5 rounded-xl border border-purple-100">
+                    <label className="block text-xs font-bold text-purple-950 mb-1 flex items-center gap-1.5">
+                      <Calendar className="w-3.5 h-3.5 text-purple-600" />
+                      <span>活動開始時間 (Start Time)</span>
+                    </label>
+                    <input
+                      type="datetime-local"
+                      value={newEvent.start_time}
+                      onChange={(e) => setNewEvent({ ...newEvent, start_time: e.target.value })}
+                      className="w-full bg-white border border-purple-200 rounded-xl px-3 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 font-mono"
+                    />
+                    <p className="text-[10px] text-purple-600/80 mt-1">選填，活動對外開放起始時間點。</p>
+                  </div>
+
+                  <div className="bg-purple-50/50 p-3.5 rounded-xl border border-purple-100">
+                    <label className="block text-xs font-bold text-purple-950 mb-1 flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-purple-600" />
+                      <span>活動結束時間 (End Time)</span>
+                    </label>
+                    <input
+                      type="datetime-local"
+                      value={newEvent.end_time}
+                      onChange={(e) => setNewEvent({ ...newEvent, end_time: e.target.value })}
+                      className="w-full bg-white border border-purple-200 rounded-xl px-3 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 font-mono"
+                    />
+                    <p className="text-[10px] text-purple-600/80 mt-1">選填，活動撤展或截止時間點。</p>
+                  </div>
+
                   <div className="sm:col-span-2">
                     <label className="block text-xs font-bold text-slate-700 mb-1">活動介紹</label>
                     <textarea
@@ -1107,12 +1288,36 @@ export default function AdminPage() {
                     />
                   </div>
                 </div>
-                <div className="flex justify-end gap-2 pt-2">
+
+                <div className="flex justify-end gap-2.5 pt-2">
+                  <button
+                    type="button"
+                    onClick={handleCancelEditEvent}
+                    className="px-4 py-2 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold text-sm rounded-xl transition cursor-pointer"
+                  >
+                    取消
+                  </button>
                   <button
                     type="submit"
-                    className="px-5 py-2 bg-pink-600 hover:bg-pink-700 text-white font-bold text-sm rounded-xl shadow cursor-pointer"
+                    disabled={isSavingEvent}
+                    className="px-5 py-2 bg-pink-600 hover:bg-pink-700 text-white font-bold text-sm rounded-xl shadow-md transition cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
                   >
-                    儲存至資料庫
+                    {isSavingEvent ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <span>同步至資料庫中...</span>
+                      </>
+                    ) : editingEventId ? (
+                      <>
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>💾 儲存活動變更</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4" />
+                        <span>儲存至資料庫</span>
+                      </>
+                    )}
                   </button>
                 </div>
               </form>
@@ -1129,7 +1334,9 @@ export default function AdminPage() {
                 {eventsList.map((event) => (
                   <div
                     key={event.id}
-                    className="border border-slate-200 rounded-2xl overflow-hidden hover:shadow-lg transition-shadow bg-white flex flex-col"
+                    className={`border rounded-2xl overflow-hidden hover:shadow-lg transition-all bg-white flex flex-col ${
+                      editingEventId === event.id ? 'border-pink-500 ring-2 ring-pink-500/20 shadow-md' : 'border-slate-200'
+                    }`}
                   >
                     <div className="h-44 bg-slate-800 relative flex items-center justify-center overflow-hidden">
                       <div className="absolute inset-0 bg-gradient-to-br from-slate-800 to-slate-950" />
@@ -1137,48 +1344,104 @@ export default function AdminPage() {
                         OshiPulse
                       </span>
                       <div className="absolute top-4 left-4 flex gap-2 z-20">
-                        <span className="bg-emerald-100 text-emerald-800 text-xs font-extrabold px-2 py-1 rounded-full">
+                        <span className={`text-xs font-extrabold px-2.5 py-1 rounded-full ${
+                          event.status === '上架展示中'
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : event.status === '排程準備中'
+                            ? 'bg-amber-100 text-amber-800'
+                            : 'bg-slate-200 text-slate-700'
+                        }`}>
                           {event.status}
                         </span>
                         <span className="bg-pink-100 text-pink-800 text-xs font-extrabold px-2 py-1 rounded-full flex items-center gap-1">
                           <MapPin className="w-3 h-3" /> {event.event_type}
                         </span>
                       </div>
+                      <span className="absolute top-4 right-4 text-xs font-mono font-bold text-white/50 bg-black/40 px-2 py-0.5 rounded-full z-20">
+                        #{event.id}
+                      </span>
                     </div>
-                    <div className="p-5 flex-1 flex flex-col">
-                      <h3 className="text-lg font-bold text-slate-900 mb-2">{event.title}</h3>
-                      <p className="text-sm text-slate-500 line-clamp-2 leading-relaxed flex-1">
-                        {event.description || '無詳細說明'}
-                      </p>
-                      {event.location && (
-                        <div className="mt-3 text-xs text-slate-600 flex items-center gap-1">
-                          <MapPin className="w-3.5 h-3.5 text-pink-500" />
-                          <span>{event.location}</span>
-                          {event.google_maps_url && (
-                            <a
-                              href={event.google_maps_url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-pink-600 hover:underline ml-1 inline-flex items-center gap-0.5"
-                            >
-                              導航 <ExternalLink className="w-3 h-3" />
-                            </a>
+
+                    <div className="p-5 flex-1 flex flex-col justify-between">
+                      <div>
+                        <h3 className="text-lg font-bold text-slate-900 mb-1.5 flex items-center justify-between">
+                          <span>{event.title}</span>
+                          {editingEventId === event.id && (
+                            <span className="text-[10px] font-bold text-pink-600 bg-pink-50 px-2 py-0.5 rounded-full border border-pink-200">
+                              編輯中
+                            </span>
                           )}
-                        </div>
-                      )}
-                      <div className="mt-4 pt-4 border-t border-slate-100 flex justify-between items-center">
+                        </h3>
+                        <p className="text-sm text-slate-500 line-clamp-2 leading-relaxed">
+                          {event.description || '無詳細說明'}
+                        </p>
+
+                        {/* 🌟 活動起訖時間區間標籤展示 */}
+                        {(event.start_time || event.end_time) ? (
+                          <div className="mt-3 text-xs text-purple-700 bg-purple-50 border border-purple-100 rounded-xl px-2.5 py-1.5 flex items-center gap-1.5 font-medium">
+                            <Calendar className="w-3.5 h-3.5 text-purple-500 shrink-0" />
+                            <span>
+                              {event.start_time ? formatDisplayDateTime(event.start_time) : '未定'}
+                              {' ~ '}
+                              {event.end_time ? formatDisplayDateTime(event.end_time) : '未定'}
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="mt-2.5 text-[11px] text-slate-400 flex items-center gap-1">
+                            <Calendar className="w-3 h-3 text-slate-300 shrink-0" />
+                            <span>未設定活動時間區間</span>
+                          </div>
+                        )}
+
+                        {event.location && (
+                          <div className="mt-2.5 text-xs text-slate-600 flex items-center gap-1">
+                            <MapPin className="w-3.5 h-3.5 text-pink-500 shrink-0" />
+                            <span className="truncate">{event.location}</span>
+                            {event.google_maps_url && (
+                              <a
+                                href={event.google_maps_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-pink-600 hover:underline ml-1 inline-flex items-center gap-0.5 shrink-0"
+                              >
+                                導航 <ExternalLink className="w-3 h-3" />
+                              </a>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* 卡片操作列：新增「編輯」按鈕 */}
+                      <div className="mt-4 pt-4 border-t border-slate-100 flex justify-between items-center gap-2">
                         <button
+                          type="button"
                           onClick={() => handleDuplicateEvent(event)}
                           className="text-xs font-bold text-slate-600 hover:text-slate-900 flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer"
+                          title="一鍵複製此活動並建立排程副本"
                         >
                           <Copy className="w-3.5 h-3.5" /> 複製副本
                         </button>
-                        <button
-                          onClick={() => handleDeleteEvent(event.id)}
-                          className="text-xs font-bold text-rose-600 hover:text-rose-700 flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-rose-100 hover:bg-rose-50 cursor-pointer"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" /> 刪除
-                        </button>
+
+                        <div className="flex items-center gap-1.5">
+                          {/* 🌟 核心新增：「編輯」按鈕 */}
+                          <button
+                            type="button"
+                            onClick={() => handleEditEventClick(event)}
+                            className="text-xs font-bold text-pink-700 bg-pink-50 hover:bg-pink-100 flex items-center gap-1 px-3 py-1.5 rounded-lg border border-pink-200 transition cursor-pointer shadow-2xs"
+                            title="編輯此活動資料與時間區間"
+                          >
+                            <Edit className="w-3.5 h-3.5" /> 編輯
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteEvent(event.id)}
+                            className="text-xs font-bold text-rose-600 hover:text-rose-700 flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-rose-100 hover:bg-rose-50 cursor-pointer"
+                            title="刪除此活動"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" /> 刪除
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>

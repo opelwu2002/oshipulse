@@ -53,6 +53,10 @@ CREATE TABLE IF NOT EXISTS public.events (
   updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now())
 );
 
+-- 安全補齊 start_time 與 end_time 欄位（相容既有資料庫）
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS start_time TIMESTAMPTZ;
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS end_time TIMESTAMPTZ;
+
 ALTER TABLE public.events ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Events full access" ON public.events;
 CREATE POLICY "Events full access" ON public.events FOR ALL USING (true) WITH CHECK (true);
