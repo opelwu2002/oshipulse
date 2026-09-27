@@ -129,9 +129,9 @@ export default function ContactPage() {
               <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
                 <CheckCircle2 className="w-8 h-8" />
               </div>
-              <h3 className="text-xl font-black text-slate-900">訊息已成功寄達！</h3>
-              <p className="text-xs sm:text-sm text-slate-600 max-w-md mx-auto">
-                系統已自動發送通知信至 <strong>opelwu2002@gmail.com</strong>。營運團隊將在查閱後儘速透過您留下的信箱回覆。
+              <h3 className="text-xl font-black text-slate-900">訊息已成功入庫並寄達！</h3>
+              <p className="text-xs sm:text-sm text-slate-600 max-w-md mx-auto leading-relaxed">
+                您的諮詢案已正式寫入 Supabase 系統資料庫，並同步通知 <strong>opelwu2002@gmail.com</strong>。管理團隊已在管理後台「粉絲諮詢」收悉，將儘速透過電子郵件與您聯繫！
               </p>
               <button
                 onClick={() => {
@@ -144,7 +144,7 @@ export default function ContactPage() {
                     message: "",
                   });
                 }}
-                className="px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-all"
+                className="px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-all cursor-pointer shadow-sm"
               >
                 寄送另一則詢問
               </button>
@@ -237,7 +237,7 @@ export default function ContactPage() {
                 {loading ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>正在發送通知至 opelwu2002@gmail.com...</span>
+                    <span>正在寫入資料庫並同步通知營運團隊...</span>
                   </>
                 ) : (
                   <>
