@@ -98,8 +98,14 @@ CREATE TABLE IF NOT EXISTS public.battles (
   blue_votes BIGINT DEFAULT 0,
   blue_avatar TEXT,
   status TEXT DEFAULT 'live',
+  start_time TIMESTAMPTZ,
+  end_time TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now())
 );
+
+-- 安全補齊 start_time 與 end_time 欄位（相容既有資料庫）
+ALTER TABLE public.battles ADD COLUMN IF NOT EXISTS start_time TIMESTAMPTZ;
+ALTER TABLE public.battles ADD COLUMN IF NOT EXISTS end_time TIMESTAMPTZ;
 
 ALTER TABLE public.battles ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Battles full access" ON public.battles;

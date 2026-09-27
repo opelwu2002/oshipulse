@@ -21,7 +21,23 @@ import {
   Zap,
   Heart,
   Loader2,
+  Calendar,
+  Clock,
+  CheckCircle2,
 } from "lucide-react";
+
+// 格式化顯示中文起訖時間標籤
+function formatDisplayDateTime(dateStr?: string | null): string {
+  if (!dateStr) return "";
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return "";
+    const pad = (n: number) => n.toString().padStart(2, "0");
+    return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  } catch {
+    return "";
+  }
+}
 
 export default function TugOfWarArena() {
   const { idols, openShareModal, syncIdolsFromApi, isSoundEnabled, isVibrationEnabled } = useAppStore();
@@ -58,6 +74,10 @@ export default function TugOfWarArena() {
 
   // 決定目前擂台戰況資料來源（資料庫優先，降級至 idols 前兩名）
   const isFromDb = Boolean(dbBattle);
+  const battleStatus: "live" | "upcoming" | "ended" =
+    isFromDb && dbBattle?.status ? dbBattle.status : "live";
+  const battleStartTime = isFromDb ? dbBattle?.start_time : null;
+  const battleEndTime = isFromDb ? dbBattle?.end_time : null;
 
   const competitorA = isFromDb
     ? {
@@ -143,6 +163,7 @@ export default function TugOfWarArena() {
   const handleVoteSide = async (side: "red" | "blue", e: React.MouseEvent) => {
     e.stopPropagation();
     if (votingSide) return;
+    if (isFromDb && battleStatus !== "live") return;
     setVotingSide(side);
 
     try {
@@ -249,28 +270,62 @@ export default function TugOfWarArena() {
 
         {/* 擂台頂部資訊條 */}
         <div className="flex flex-wrap items-center justify-between gap-3 mb-6 pb-4 border-b border-slate-100">
-          <div className="flex items-center gap-2.5">
-            <span className="flex h-3 w-3 relative">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyber-rose opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-cyber-rose"></span>
-            </span>
+          <div className="flex flex-wrap items-center gap-2.5">
+            {battleStatus === "live" ? (
+              <span className="flex h-3 w-3 relative">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyber-rose opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-cyber-rose"></span>
+              </span>
+            ) : battleStatus === "upcoming" ? (
+              <span className="flex items-center justify-center w-5 h-5 rounded-full bg-amber-100 text-amber-600">
+                <Clock className="w-3.5 h-3.5" />
+              </span>
+            ) : (
+              <span className="flex items-center justify-center w-5 h-5 rounded-full bg-slate-200 text-slate-700">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+              </span>
+            )}
+
             <div className="flex items-center gap-1.5 font-black text-slate-900 text-sm sm:text-base">
               <Swords className="w-5 h-5 text-cyber-rose" />
               <span>{arenaTitle}</span>
             </div>
+
             <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-purple-50 text-cyber-purple border border-purple-100">
               {seasonBadge}
             </span>
-            {isFromDb && (
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 hidden sm:inline-block">
-                ● 雲端資料庫即時同步中
+
+            {/* 賽季狀態標籤 */}
+            {battleStatus === "live" ? (
+              <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                ● 進行中 (LIVE)
+              </span>
+            ) : battleStatus === "upcoming" ? (
+              <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+                ⏳ 排程準備中 (Upcoming)
+              </span>
+            ) : (
+              <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-300">
+                🏁 已完賽結算 (Ended)
+              </span>
+            )}
+
+            {/* 賽季起訖時間標籤 */}
+            {(battleStartTime || battleEndTime) && (
+              <span className="text-[10px] font-mono font-medium px-2.5 py-0.5 rounded-full bg-slate-50 text-slate-600 border border-slate-200 flex items-center gap-1">
+                <Calendar className="w-3 h-3 text-pink-500" />
+                <span>
+                  {battleStartTime ? formatDisplayDateTime(battleStartTime) : "即日起"}
+                  {" ~ "}
+                  {battleEndTime ? formatDisplayDateTime(battleEndTime) : "無限期"}
+                </span>
               </span>
             )}
           </div>
 
           {/* 緊張死守線指示標 */}
           <div className="flex items-center gap-2">
-            {isTense && (
+            {battleStatus === "live" && isTense && (
               <div className="flex items-center gap-1.5 px-3 py-1 bg-rose-50 text-cyber-rose border border-rose-200 rounded-full text-xs font-bold animate-pulse">
                 <AlertTriangle className="w-3.5 h-3.5 text-cyber-rose" />
                 <span>差距 {deltaPercent.toFixed(1)}%：死守拉鋸線！</span>
@@ -303,7 +358,7 @@ export default function TugOfWarArena() {
                 className={`relative w-20 h-20 sm:w-28 sm:h-28 rounded-full overflow-hidden border-4 ${
                   competitorA.vote_count >= competitorB.vote_count
                     ? "border-amber-400 shadow-lg shadow-amber-400/20"
-                    : isTense
+                    : isTense && battleStatus === "live"
                     ? "border-cyber-rose ring-4 ring-rose-400/40 animate-pulse"
                     : "border-slate-300 shadow-md"
                 }`}
@@ -317,8 +372,13 @@ export default function TugOfWarArena() {
                   unoptimized
                 />
               </motion.div>
+
+              {/* 冠軍金冠或領先標記 */}
               {competitorA.vote_count >= competitorB.vote_count && (
-                <div className="absolute -top-2 -right-2 w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-amber-400 text-slate-900 flex items-center justify-center font-black shadow-md">
+                <div
+                  className="absolute -top-2 -right-2 w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-amber-400 text-slate-900 flex items-center justify-center font-black shadow-md"
+                  title={battleStatus === "ended" ? "賽季衛冕冠軍" : "即時領先"}
+                >
                   <Trophy className="w-4 h-4 text-slate-950" />
                 </div>
               )}
@@ -329,25 +389,59 @@ export default function TugOfWarArena() {
                 {competitorA.name}
               </span>
             </div>
-            <div className="text-xs text-rose-600 font-bold mb-2">{competitorA.subText}</div>
+
+            {/* 陣營與名次標籤 */}
+            <div className="flex items-center gap-1 mb-2">
+              <span className="text-xs text-rose-600 font-bold">{competitorA.subText}</span>
+              {battleStatus === "ended" && (
+                <span
+                  className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                    competitorA.vote_count >= competitorB.vote_count
+                      ? "bg-amber-100 text-amber-800 border border-amber-300"
+                      : "bg-slate-100 text-slate-600"
+                  }`}
+                >
+                  {competitorA.vote_count >= competitorB.vote_count ? "🏆 衛冕冠軍" : "🥈 準優勝"}
+                </span>
+              )}
+            </div>
+
             <div className="text-lg sm:text-2xl font-black text-rose-600 mb-3 font-mono">
               {formatNumber(competitorA.vote_count)} <span className="text-xs font-normal text-slate-500">票</span>
             </div>
 
-            {/* 即時應援按鈕 */}
+            {/* 即時應援按鈕（依狀態切換） */}
             {isFromDb ? (
-              <button
-                onClick={(e) => handleVoteSide("red", e)}
-                disabled={votingSide === "red"}
-                className="px-4 py-2 bg-gradient-to-r from-rose-500 to-pink-600 hover:from-rose-600 hover:to-pink-700 text-white rounded-full text-xs font-bold shadow-md hover:shadow-lg transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 disabled:opacity-50"
-              >
-                {votingSide === "red" ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <Heart className="w-3.5 h-3.5 fill-white" />
-                )}
-                <span>為紅方應援 (+1)</span>
-              </button>
+              battleStatus === "live" ? (
+                <button
+                  onClick={(e) => handleVoteSide("red", e)}
+                  disabled={votingSide === "red"}
+                  className="px-4 py-2 bg-gradient-to-r from-rose-500 to-pink-600 hover:from-rose-600 hover:to-pink-700 text-white rounded-full text-xs font-bold shadow-md hover:shadow-lg transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 disabled:opacity-50"
+                >
+                  {votingSide === "red" ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Heart className="w-3.5 h-3.5 fill-white" />
+                  )}
+                  <span>為紅方應援 (+1)</span>
+                </button>
+              ) : battleStatus === "upcoming" ? (
+                <button
+                  disabled
+                  className="px-4 py-2 bg-amber-50 text-amber-700 rounded-full text-xs font-bold border border-amber-200 cursor-not-allowed opacity-80 flex items-center gap-1.5"
+                >
+                  <Clock className="w-3.5 h-3.5" />
+                  <span>⏳ 敬請期待開賽</span>
+                </button>
+              ) : (
+                <button
+                  disabled
+                  className="px-4 py-2 bg-slate-100 text-slate-500 rounded-full text-xs font-bold border border-slate-200 cursor-not-allowed opacity-80 flex items-center gap-1.5"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5 text-slate-400" />
+                  <span>🏁 賽季已結算</span>
+                </button>
+              )
             ) : (
               <VoteButton idolId={competitorA.id} idolName={competitorA.name} size="sm" />
             )}
@@ -366,7 +460,7 @@ export default function TugOfWarArena() {
                 className={`relative w-20 h-20 sm:w-28 sm:h-28 rounded-full overflow-hidden border-4 ${
                   competitorB.vote_count > competitorA.vote_count
                     ? "border-amber-400 shadow-lg shadow-amber-400/20"
-                    : isTense
+                    : isTense && battleStatus === "live"
                     ? "border-blue-500 ring-4 ring-blue-400/40 animate-pulse"
                     : "border-slate-300 shadow-md"
                 }`}
@@ -380,8 +474,13 @@ export default function TugOfWarArena() {
                   unoptimized
                 />
               </motion.div>
+
+              {/* 冠軍金冠或領先標記 */}
               {competitorB.vote_count > competitorA.vote_count && (
-                <div className="absolute -top-2 -left-2 w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-amber-400 text-slate-900 flex items-center justify-center font-black shadow-md">
+                <div
+                  className="absolute -top-2 -left-2 w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-amber-400 text-slate-900 flex items-center justify-center font-black shadow-md"
+                  title={battleStatus === "ended" ? "賽季衛冕冠軍" : "即時領先"}
+                >
                   <Trophy className="w-4 h-4 text-slate-950" />
                 </div>
               )}
@@ -392,25 +491,59 @@ export default function TugOfWarArena() {
                 {competitorB.name}
               </span>
             </div>
-            <div className="text-xs text-blue-600 font-bold mb-2">{competitorB.subText}</div>
+
+            {/* 陣營與名次標籤 */}
+            <div className="flex items-center gap-1 mb-2">
+              <span className="text-xs text-blue-600 font-bold">{competitorB.subText}</span>
+              {battleStatus === "ended" && (
+                <span
+                  className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                    competitorB.vote_count > competitorA.vote_count
+                      ? "bg-amber-100 text-amber-800 border border-amber-300"
+                      : "bg-slate-100 text-slate-600"
+                  }`}
+                >
+                  {competitorB.vote_count > competitorA.vote_count ? "🏆 衛冕冠軍" : "🥈 準優勝"}
+                </span>
+              )}
+            </div>
+
             <div className="text-lg sm:text-2xl font-black text-blue-600 mb-3 font-mono">
               {formatNumber(competitorB.vote_count)} <span className="text-xs font-normal text-slate-500">票</span>
             </div>
 
-            {/* 即時應援按鈕 */}
+            {/* 即時應援按鈕（依狀態切換） */}
             {isFromDb ? (
-              <button
-                onClick={(e) => handleVoteSide("blue", e)}
-                disabled={votingSide === "blue"}
-                className="px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white rounded-full text-xs font-bold shadow-md hover:shadow-lg transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 disabled:opacity-50"
-              >
-                {votingSide === "blue" ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <Heart className="w-3.5 h-3.5 fill-white" />
-                )}
-                <span>為藍方應援 (+1)</span>
-              </button>
+              battleStatus === "live" ? (
+                <button
+                  onClick={(e) => handleVoteSide("blue", e)}
+                  disabled={votingSide === "blue"}
+                  className="px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white rounded-full text-xs font-bold shadow-md hover:shadow-lg transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 disabled:opacity-50"
+                >
+                  {votingSide === "blue" ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Heart className="w-3.5 h-3.5 fill-white" />
+                  )}
+                  <span>為藍方應援 (+1)</span>
+                </button>
+              ) : battleStatus === "upcoming" ? (
+                <button
+                  disabled
+                  className="px-4 py-2 bg-amber-50 text-amber-700 rounded-full text-xs font-bold border border-amber-200 cursor-not-allowed opacity-80 flex items-center gap-1.5"
+                >
+                  <Clock className="w-3.5 h-3.5" />
+                  <span>⏳ 敬請期待開賽</span>
+                </button>
+              ) : (
+                <button
+                  disabled
+                  className="px-4 py-2 bg-slate-100 text-slate-500 rounded-full text-xs font-bold border border-slate-200 cursor-not-allowed opacity-80 flex items-center gap-1.5"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5 text-slate-400" />
+                  <span>🏁 賽季已結算</span>
+                </button>
+              )
             ) : (
               <VoteButton idolId={competitorB.id} idolName={competitorB.name} size="sm" />
             )}
@@ -445,14 +578,32 @@ export default function TugOfWarArena() {
           </div>
 
           <div className="flex justify-between items-center text-[11px] text-slate-400 pt-1">
-            <span>票數差距：{formatNumber(Math.abs(competitorA.vote_count - competitorB.vote_count))} 票</span>
-            <button
-              onClick={() => openShareModal()}
-              className="flex items-center gap-1 text-cyber-rose hover:underline font-bold cursor-pointer"
-            >
-              <Zap className="w-3 h-3" />
-              <span>發動擴散希望領取能量票！</span>
-            </button>
+            <span>
+              {battleStatus === "ended"
+                ? `🏁 賽季已結算 · 最終票數差距：${formatNumber(Math.abs(competitorA.vote_count - competitorB.vote_count))} 票`
+                : battleStatus === "upcoming"
+                ? `⏳ 賽季籌備中 · 初始票數差距：${formatNumber(Math.abs(competitorA.vote_count - competitorB.vote_count))} 票`
+                : `票數差距：${formatNumber(Math.abs(competitorA.vote_count - competitorB.vote_count))} 票`}
+            </span>
+            {battleStatus === "live" ? (
+              <button
+                onClick={() => openShareModal()}
+                className="flex items-center gap-1 text-cyber-rose hover:underline font-bold cursor-pointer"
+              >
+                <Zap className="w-3 h-3" />
+                <span>發動擴散希望領取能量票！</span>
+              </button>
+            ) : battleStatus === "upcoming" ? (
+              <span className="text-amber-600 font-bold flex items-center gap-1">
+                <Clock className="w-3 h-3" />
+                <span>賽季即將開打，請先於修煉所備戰！</span>
+              </span>
+            ) : (
+              <span className="text-slate-500 font-bold flex items-center gap-1">
+                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                <span>賽季圓滿結算，恭喜衛冕贏家！</span>
+              </span>
+            )}
           </div>
         </div>
       </div>

@@ -556,11 +556,15 @@ export default function AdminPage() {
   }
 
   function handleNewBattle() {
+    const now = new Date()
+    const nextWeek = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
     setEditingBattle({
       isNew: true,
       title: '2026 跨界巔峰對決冠軍賽',
       season_name: 'Season 2 決戰之巔',
       status: 'live',
+      start_time: formatToDatetimeLocal(now.toISOString()),
+      end_time: formatToDatetimeLocal(nextWeek.toISOString()),
       red_name: '成振宇 (Sung Jinwoo)',
       red_avatar: 'https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx105398-b673VtlCXHQT.jpg',
       red_votes: 125000,
@@ -587,6 +591,8 @@ export default function AdminPage() {
         blue_avatar: (editingBattle.blue_avatar || '').trim(),
         blue_votes: Number(editingBattle.blue_votes) || 0,
         status: editingBattle.status || 'live',
+        start_time: editingBattle.start_time || null,
+        end_time: editingBattle.end_time || null,
       }
 
       if (!editingBattle.isNew) {
@@ -1933,15 +1939,28 @@ export default function AdminPage() {
                             ) : battle.status === 'upcoming' ? (
                               <span className="text-xs font-bold px-3 py-1 bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-full flex items-center gap-1.5">
                                 <Clock className="w-3 h-3" />
-                                <span>即將開始</span>
+                                <span>排程準備中 (Upcoming)</span>
                               </span>
                             ) : (
-                              <span className="text-xs font-bold px-3 py-1 bg-slate-500/20 text-slate-400 border border-slate-500/30 rounded-full">
-                                已完賽結算
+                              <span className="text-xs font-bold px-3 py-1 bg-slate-500/20 text-slate-300 border border-slate-500/30 rounded-full flex items-center gap-1.5">
+                                <CheckCircle2 className="w-3 h-3 text-slate-400" />
+                                <span>已完賽結算 (Ended)</span>
                               </span>
                             )}
                           </div>
                         </div>
+
+                        {/* 賽季起訖時間區間徽章 */}
+                        {(battle.start_time || battle.end_time) && (
+                          <div className="z-10 flex items-center gap-1.5 text-[11px] font-mono font-medium text-slate-300 bg-white/5 border border-white/10 px-3 py-1 rounded-lg w-fit">
+                            <Calendar className="w-3.5 h-3.5 text-pink-400 shrink-0" />
+                            <span>
+                              {battle.start_time ? formatDisplayDateTime(battle.start_time) : '即日起'}
+                              {' ~ '}
+                              {battle.end_time ? formatDisplayDateTime(battle.end_time) : '無限期'}
+                            </span>
+                          </div>
+                        )}
 
                         {/* 對決標題 */}
                         <div className="z-10">
@@ -2016,13 +2035,23 @@ export default function AdminPage() {
                         {/* 底部操作按鈕 */}
                         <div className="pt-4 border-t border-white/10 flex items-center justify-between z-10">
                           <span className="text-[11px] text-slate-400">
-                            {battle.status === 'live' ? '🔥 前台首頁將即時呈現本對決' : '未在前台首頁展示'}
+                            {battle.status === 'live'
+                              ? '🔥 前台首頁將即時呈現本對決並開放雙向應援'
+                              : battle.status === 'upcoming'
+                              ? '⏳ 排程準備中（前台顯示預告，投票鎖定）'
+                              : '🏁 賽季已完賽結算（前台展示榮譽榜，投票關閉）'}
                           </span>
 
                           <div className="flex items-center gap-2">
                             <button
                               type="button"
-                              onClick={() => setEditingBattle({ ...battle })}
+                              onClick={() =>
+                                setEditingBattle({
+                                  ...battle,
+                                  start_time: formatToDatetimeLocal(battle.start_time),
+                                  end_time: formatToDatetimeLocal(battle.end_time),
+                                })
+                              }
                               className="px-3.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition flex items-center gap-1.5 border border-white/10 cursor-pointer"
                               title="編輯此對決資訊與票數"
                             >
@@ -2114,6 +2143,35 @@ export default function AdminPage() {
                         />
                       </div>
 
+                      {/* 活動起訖時間區間 */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:col-span-3 pt-2 border-t border-slate-200/80">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
+                            <Calendar className="w-3.5 h-3.5 text-pink-500" />
+                            <span>活動開始時間 (Start Time)</span>
+                          </label>
+                          <input
+                            type="datetime-local"
+                            value={editingBattle.start_time || ''}
+                            onChange={(e) => setEditingBattle({ ...editingBattle, start_time: e.target.value })}
+                            className="block w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm focus:border-pink-500 focus:ring-1 focus:ring-pink-500 bg-white font-mono"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
+                            <Calendar className="w-3.5 h-3.5 text-purple-500" />
+                            <span>活動結束時間 (End Time)</span>
+                          </label>
+                          <input
+                            type="datetime-local"
+                            value={editingBattle.end_time || ''}
+                            onChange={(e) => setEditingBattle({ ...editingBattle, end_time: e.target.value })}
+                            className="block w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm focus:border-pink-500 focus:ring-1 focus:ring-pink-500 bg-white font-mono"
+                          />
+                        </div>
+                      </div>
+
                       <div className="sm:col-span-3">
                         <label className="block text-xs font-bold text-slate-700 mb-1">
                           比賽狀態 (Status)
@@ -2121,11 +2179,11 @@ export default function AdminPage() {
                         <select
                           value={editingBattle.status || 'live'}
                           onChange={(e) => setEditingBattle({ ...editingBattle, status: e.target.value })}
-                          className="block w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm focus:border-pink-500 focus:ring-1 focus:ring-pink-500 bg-white"
+                          className="block w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm focus:border-pink-500 focus:ring-1 focus:ring-pink-500 bg-white font-medium"
                         >
-                          <option value="live">🔥 進行中 (Live) - 前台首頁將即時動態呈現本對決</option>
-                          <option value="upcoming">⏳ 即將開始 (Upcoming) - 預告階段</option>
-                          <option value="ended">🏁 已完賽結算 (Ended) - 封存於賽季歷史殿堂</option>
+                          <option value="live">🔥 進行中 (Live) - 熱烈進行中，前台即時顯示投票與拉鋸戰</option>
+                          <option value="upcoming">⏳ 排程準備中 (Upcoming / Scheduled) - 尚未開始，前台可顯示倒數計時或預告</option>
+                          <option value="ended">🏁 已完賽結算 (Ended) - 賽季已結算，前台顯示最終贏家金標與結算結果</option>
                         </select>
                       </div>
                     </div>

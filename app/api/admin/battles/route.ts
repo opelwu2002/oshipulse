@@ -49,6 +49,8 @@ export async function POST(request: Request) {
       blue_avatar,
       blue_votes,
       status,
+      start_time,
+      end_time,
     } = body;
 
     if (!title || !red_name || !blue_name) {
@@ -58,7 +60,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const insertPayload = {
+    const insertPayload: any = {
       title: title.trim(),
       season_name: (season_name || "2026 跨界巔峰對決").trim(),
       red_name: red_name.trim(),
@@ -68,14 +70,27 @@ export async function POST(request: Request) {
       blue_avatar: (blue_avatar || "https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx113415-bbBWj4pEFseh.jpg").trim(),
       blue_votes: Number(blue_votes) || 0,
       status: status || "live",
+      start_time: start_time ? new Date(start_time).toISOString() : null,
+      end_time: end_time ? new Date(end_time).toISOString() : null,
       created_at: new Date().toISOString(),
     };
 
     const supabaseAdmin = getSupabaseAdminClient();
-    const { data, error } = await supabaseAdmin
+    let { data, error } = await supabaseAdmin
       .from("battles")
       .insert([insertPayload])
       .select();
+
+    // 防呆相容：若資料庫尚未補齊 start_time/end_time 欄位導致報錯，進行降級寫入
+    if (error && (error.code === "PGRST204" || error.message.includes("start_time") || error.message.includes("end_time"))) {
+      console.warn("Supabase battles 資料表尚未包含 start_time/end_time 欄位，進行降級寫入...");
+      const fallbackPayload = { ...insertPayload };
+      delete fallbackPayload.start_time;
+      delete fallbackPayload.end_time;
+      const retry = await supabaseAdmin.from("battles").insert([fallbackPayload]).select();
+      data = retry.data;
+      error = retry.error;
+    }
 
     if (error) {
       return NextResponse.json({ success: false, message: error.message }, { status: 500 });
@@ -106,6 +121,8 @@ export async function PUT(request: Request) {
       blue_avatar,
       blue_votes,
       status,
+      start_time,
+      end_time,
       vote_side,
       increment,
     } = body;
@@ -167,12 +184,29 @@ export async function PUT(request: Request) {
     if (blue_avatar !== undefined) updatePayload.blue_avatar = blue_avatar.trim();
     if (blue_votes !== undefined) updatePayload.blue_votes = Number(blue_votes);
     if (status !== undefined) updatePayload.status = status;
+    if (start_time !== undefined) {
+      updatePayload.start_time = start_time ? new Date(start_time).toISOString() : null;
+    }
+    if (end_time !== undefined) {
+      updatePayload.end_time = end_time ? new Date(end_time).toISOString() : null;
+    }
 
-    const { data, error } = await supabaseAdmin
+    let { data, error } = await supabaseAdmin
       .from("battles")
       .update(updatePayload)
       .eq("id", id)
       .select();
+
+    // 防呆相容：若資料庫尚未補齊 start_time/end_time 欄位導致報錯，進行降級更新
+    if (error && (error.code === "PGRST204" || error.message.includes("start_time") || error.message.includes("end_time"))) {
+      console.warn("Supabase battles 資料表尚未包含 start_time/end_time 欄位，進行降級更新...");
+      const fallbackPayload = { ...updatePayload };
+      delete fallbackPayload.start_time;
+      delete fallbackPayload.end_time;
+      const retry = await supabaseAdmin.from("battles").update(fallbackPayload).eq("id", id).select();
+      data = retry.data;
+      error = retry.error;
+    }
 
     if (error) {
       return NextResponse.json({ success: false, message: error.message }, { status: 500 });
