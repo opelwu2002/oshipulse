@@ -36,7 +36,7 @@ import { supabase } from '@/lib/supabase'
 
 export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<
-    'events' | 'idols' | 'battles' | 'collabs' | 'store' | 'messages' | 'members'
+    'events' | 'idols' | 'battles' | 'pledges' | 'collabs' | 'store' | 'messages' | 'members'
   >('events')
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(false)
@@ -76,9 +76,18 @@ export default function AdminPage() {
   const [auditLogs, setAuditLogs] = useState<any[]>([])
 
   // ==========================================
+  // 3.1. pledges (應援許願池 Pledging)
+  // ==========================================
+  const [pledgesList, setPledgesList] = useState<any[]>([])
+  const [editingPledge, setEditingPledge] = useState<any>(null)
+  const [isSavingPledge, setIsSavingPledge] = useState(false)
+
+  // ==========================================
   // 4. collabs (聯名許願與抽獎)
   // ==========================================
   const [collabWishes, setCollabWishes] = useState<any[]>([])
+  const [editingCollab, setEditingCollab] = useState<any>(null)
+  const [isSavingCollab, setIsSavingCollab] = useState(false)
   const [drawActivity, setDrawActivity] = useState('IVE 專屬 Lucky Vicky 幸運壓克力立牌應援套組')
   const [drawnWinners, setDrawnWinners] = useState<any[]>([])
   const [isDrawing, setIsDrawing] = useState(false)
@@ -117,6 +126,7 @@ export default function AdminPage() {
       fetchBattles()
       fetchAuditLogs()
     }
+    if (activeTab === 'pledges') fetchPledges()
     if (activeTab === 'collabs') {
       fetchCollabs()
       fetchMembers() // 供抽獎使用
@@ -708,10 +718,157 @@ export default function AdminPage() {
     }
   }
 
+  // 3.1. 應援許願池 (Pledging)
+  async function fetchPledges() {
+    try {
+      // 1. 優先嘗試 Supabase 用戶端直連讀取
+      const { data: dbData, error: dbError } = await supabase
+        .from('pledge_wishes')
+        .select('*')
+        .order('id', { ascending: false })
+
+      if (!dbError && dbData && dbData.length > 0) {
+        setPledgesList(dbData)
+        return
+      }
+
+      // 2. 備援管理員 API 讀取
+      const res = await fetch(`/api/admin/pledges?t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate' },
+      })
+      const json = await res.json()
+      if (json.tableMissing) {
+        setTableMissingWarning('pledge_wishes')
+      } else if (json.success) {
+        setPledgesList(json.pledges || (json.pledge ? [json.pledge] : []))
+      }
+    } catch (e) {
+      console.error('抓取應援許願池資料失敗:', e)
+    }
+  }
+
+  function handleNewPledge() {
+    const now = new Date()
+    const nextMonth = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
+    setEditingPledge({
+      isNew: true,
+      title: '台北捷運全線燈箱應援企劃 · 五條悟領域展開 2026',
+      description: '最強咒術師五條悟全線佔領！集氣滿額即解鎖台北捷運忠孝復興與台北車站巨型光箱廣告。',
+      image_url: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=1200',
+      current_votes: 0,
+      target_votes: 10000,
+      status: 'active',
+      start_time: formatToDatetimeLocal(now.toISOString()),
+      end_time: formatToDatetimeLocal(nextMonth.toISOString()),
+    })
+  }
+
+  async function handleSavePledge(e: React.FormEvent) {
+    e.preventDefault()
+    if (!editingPledge) return
+    setIsSavingPledge(true)
+    setMessage('')
+
+    try {
+      const payload: any = {
+        title: (editingPledge.title || '').trim(),
+        description: (editingPledge.description || '').trim(),
+        image_url: (editingPledge.image_url || '').trim(),
+        current_votes: Number(editingPledge.current_votes) || 0,
+        target_votes: Number(editingPledge.target_votes) || 10000,
+        status: editingPledge.status || 'active',
+        start_time: editingPledge.start_time || null,
+        end_time: editingPledge.end_time || null,
+      }
+
+      if (!editingPledge.isNew) {
+        payload.id = editingPledge.id
+      }
+
+      const method = editingPledge.isNew ? 'POST' : 'PUT'
+      const res = await fetch(`/api/admin/pledges?t=${Date.now()}`, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const json = await res.json()
+
+      let success = json.success
+      if (!success) {
+        if (editingPledge.isNew) {
+          const { error: insertErr } = await supabase.from('pledge_wishes').insert([payload])
+          if (!insertErr) success = true
+        } else {
+          const { error: updateErr } = await supabase.from('pledge_wishes').update(payload).eq('id', payload.id)
+          if (!updateErr) success = true
+        }
+      }
+
+      if (!success) {
+        throw new Error(json.message || '無法儲存許願池資料')
+      }
+
+      setMessage(
+        editingPledge.isNew
+          ? `🎉 應援許願池【${payload.title}】已成功建立！`
+          : `✅ 應援許願池【${payload.title}】已成功同步至資料庫！`
+      )
+      setEditingPledge(null)
+      await fetchPledges()
+    } catch (err: any) {
+      console.error('儲存許願池失敗:', err)
+      alert(`❌ 儲存失敗：${err.message}`)
+      setMessage(`❌ 儲存許願池失敗：${err.message}`)
+    } finally {
+      setIsSavingPledge(false)
+    }
+  }
+
+  async function handleDeletePledge(id: number | string, title: string) {
+    if (!confirm(`⚠️ 確定要從資料庫徹底刪除應援許願池【${title}】(ID: #${id}) 嗎？此操作不可復原！`)) return
+
+    try {
+      const res = await fetch(`/api/admin/pledges?id=${id}`, { method: 'DELETE' })
+      const json = await res.json()
+
+      if (json.success) {
+        setMessage(`🗑️ 許願池項目 #${id} 已成功刪除！`)
+        setPledgesList((prev) => prev.filter((p) => p.id !== id))
+        fetchPledges()
+      } else {
+        const { error: delErr } = await supabase.from('pledge_wishes').delete().eq('id', id)
+        if (!delErr) {
+          setMessage(`🗑️ 許願池項目 #${id} 已成功刪除！`)
+          setPledgesList((prev) => prev.filter((p) => p.id !== id))
+          fetchPledges()
+        } else {
+          throw new Error(json.message || delErr.message)
+        }
+      }
+    } catch (err: any) {
+      console.error('刪除許願池失敗:', err)
+      alert(`❌ 刪除失敗：${err.message}`)
+    }
+  }
+
   // 4. 聯名與抽獎
   async function fetchCollabs() {
     try {
-      const res = await fetch('/api/admin/collabs')
+      const { data: dbData, error: dbError } = await supabase
+        .from('collab_wishes')
+        .select('*')
+        .order('id', { ascending: false })
+
+      if (!dbError && dbData && dbData.length > 0) {
+        setCollabWishes(dbData)
+        return
+      }
+
+      const res = await fetch(`/api/admin/collabs?t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate' },
+      })
       const json = await res.json()
       if (json.tableMissing) {
         setTableMissingWarning('collab_wishes')
@@ -719,7 +876,111 @@ export default function AdminPage() {
         setCollabWishes(json.data || [])
       }
     } catch (e) {
-      console.error(e)
+      console.error('抓取聯名許願失敗:', e)
+    }
+  }
+
+  function handleNewCollab() {
+    const now = new Date()
+    const nextMonth = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
+    setEditingCollab({
+      isNew: true,
+      brand: 'animate 安利美特',
+      idol: '《咒術迴戰》五條悟',
+      theme: '特設主題應援咖啡廳與限量特典杯墊',
+      target: 15000,
+      votes: 0,
+      status: '集氣連署中',
+      start_time: formatToDatetimeLocal(now.toISOString()),
+      end_time: formatToDatetimeLocal(nextMonth.toISOString()),
+    })
+  }
+
+  async function handleSaveCollab(e: React.FormEvent) {
+    e.preventDefault()
+    if (!editingCollab) return
+    setIsSavingCollab(true)
+    setMessage('')
+
+    try {
+      const payload: any = {
+        brand: (editingCollab.brand || '').trim(),
+        idol: (editingCollab.idol || '').trim(),
+        theme: (editingCollab.theme || '').trim(),
+        target: Number(editingCollab.target) || 15000,
+        votes: Number(editingCollab.votes) || 0,
+        status: editingCollab.status || '集氣連署中',
+        start_time: editingCollab.start_time || null,
+        end_time: editingCollab.end_time || null,
+      }
+
+      if (!editingCollab.isNew) {
+        payload.id = editingCollab.id
+      }
+
+      const method = editingCollab.isNew ? 'POST' : 'PUT'
+      const res = await fetch(`/api/admin/collabs?t=${Date.now()}`, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const json = await res.json()
+
+      let success = json.success
+      if (!success) {
+        if (editingCollab.isNew) {
+          const { error: insertErr } = await supabase.from('collab_wishes').insert([payload])
+          if (!insertErr) success = true
+        } else {
+          const { error: updateErr } = await supabase.from('collab_wishes').update(payload).eq('id', payload.id)
+          if (!updateErr) success = true
+        }
+      }
+
+      if (!success) {
+        throw new Error(json.message || '無法儲存聯名許願資料')
+      }
+
+      setMessage(
+        editingCollab.isNew
+          ? `🎉 聯名許願【${payload.brand} × ${payload.idol}】已成功建立！`
+          : `✅ 聯名許願【${payload.brand} × ${payload.idol}】資料已成功更新！`
+      )
+      setEditingCollab(null)
+      await fetchCollabs()
+    } catch (err: any) {
+      console.error('儲存聯名許願失敗:', err)
+      alert(`❌ 儲存失敗：${err.message}`)
+      setMessage(`❌ 儲存聯名許願失敗：${err.message}`)
+    } finally {
+      setIsSavingCollab(false)
+    }
+  }
+
+  async function handleDeleteCollab(id: number | string, theme: string) {
+    if (!confirm(`⚠️ 確定要從資料庫徹底刪除聯名企劃【${theme}】(ID: #${id}) 嗎？此操作不可復原！`)) return
+
+    try {
+      const res = await fetch(`/api/admin/collabs?id=${id}`, { method: 'DELETE' })
+      const json = await res.json()
+
+      if (json.success) {
+        setMessage(`🗑️ 聯名許願項目 #${id} 已成功刪除！`)
+        setCollabWishes((prev) => prev.filter((c) => c.id !== id))
+        fetchCollabs()
+      } else {
+        const { error: delErr } = await supabase.from('collab_wishes').delete().eq('id', id)
+        if (!delErr) {
+          setMessage(`🗑️ 聯名許願項目 #${id} 已成功刪除！`)
+          setCollabWishes((prev) => prev.filter((c) => c.id !== id))
+          fetchCollabs()
+        } else {
+          throw new Error(json.message || delErr.message)
+        }
+      }
+    } catch (err: any) {
+      console.error('刪除聯名許願失敗:', err)
+      alert(`❌ 刪除失敗：${err.message}`)
     }
   }
 
@@ -1064,7 +1325,8 @@ export default function AdminPage() {
     { id: 'events', label: '活動排程管理' },
     { id: 'idols', label: '動漫角色與偶像庫' },
     { id: 'battles', label: '賽季對決與防弊審計' },
-    { id: 'collabs', label: '聯名許願與抽獎' },
+    { id: 'pledges', label: '應援許願池 (Pledging)' },
+    { id: 'collabs', label: '聯名許願集氣與抽獎' },
     { id: 'store', label: '商城庫存與出貨' },
     { id: 'messages', label: '粉絲諮詢與郵件回覆' },
     { id: 'members', label: '👥 會員與粉絲檔案' },
@@ -2440,54 +2702,610 @@ export default function AdminPage() {
         )}
 
         {/* ==========================================
-            Tab 4: collabs (聯名許願與抽獎)
+            Tab 3.1: pledges (應援許願池 Pledging)
+        ========================================== */}
+        {activeTab === 'pledges' && (
+          <div className="space-y-8">
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 sm:p-8">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+                <div>
+                  <h2 className="text-xl sm:text-2xl font-black text-slate-900 flex items-center gap-2">
+                    <Sparkles className="w-6 h-6 text-pink-500" />
+                    首頁應援許願池管理 (Pledging Pools)
+                  </h2>
+                  <p className="text-sm text-slate-500 mt-1">
+                    直連 Supabase pledge_wishes 資料庫。進行中之許願池將即時呈現於前台首頁 Pledging 專區。
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleNewPledge}
+                  className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-pink-500 to-rose-600 hover:from-pink-600 hover:to-rose-700 text-white font-bold text-xs shadow-md hover:shadow-lg transition flex items-center gap-1.5 cursor-pointer shrink-0"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>新增應援許願池</span>
+                </button>
+              </div>
+
+              {pledgesList.length === 0 ? (
+                <div className="text-center py-16 bg-slate-50 border border-dashed border-slate-200 rounded-2xl text-slate-400 text-sm">
+                  目前資料庫中尚無應援許願池項目，點擊上方按鈕立即建立！
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {pledgesList.map((p) => {
+                    const percent = Math.min(100, Math.round(((p.current_votes || 0) / (p.target_votes || 10000)) * 100))
+                    return (
+                      <div
+                        key={p.id}
+                        className="border border-slate-200 rounded-2xl p-5 bg-white hover:shadow-lg transition-all flex flex-col justify-between space-y-4"
+                      >
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-600">
+                              #{p.id}
+                            </span>
+                            <span
+                              className={`text-xs font-bold px-2.5 py-0.5 rounded-full ${
+                                p.status === 'active'
+                                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                  : p.status === 'upcoming'
+                                  ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                  : 'bg-slate-100 text-slate-600 border border-slate-200'
+                              }`}
+                            >
+                              {p.status === 'active' ? '🔥 進行中 (Active)' : p.status === 'upcoming' ? '⏳ 排程準備中' : '🏁 已結束'}
+                            </span>
+                          </div>
+
+                          <div className="flex gap-4">
+                            {p.image_url && (
+                              <div className="relative w-20 h-20 rounded-xl overflow-hidden bg-slate-100 shrink-0 border border-slate-200">
+                                <SmartAvatar src={p.image_url} alt={p.title} className="w-full h-full object-cover" />
+                              </div>
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <h3 className="font-bold text-slate-900 text-base leading-snug truncate" title={p.title}>
+                                {p.title}
+                              </h3>
+                              <p className="text-xs text-slate-500 mt-1 line-clamp-2">
+                                {p.description || '無詳細簡介'}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* 檔期時間徽章 */}
+                          {(p.start_time || p.end_time) && (
+                            <div className="flex items-center gap-1.5 text-[11px] font-mono font-medium text-slate-600 bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-lg w-fit">
+                              <Calendar className="w-3.5 h-3.5 text-pink-500 shrink-0" />
+                              <span>
+                                {p.start_time ? formatDisplayDateTime(p.start_time) : '即日起'}
+                                {' ~ '}
+                                {p.end_time ? formatDisplayDateTime(p.end_time) : '無限期'}
+                              </span>
+                            </div>
+                          )}
+
+                          {/* 集氣進度條 */}
+                          <div className="space-y-1">
+                            <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
+                              <div
+                                className="bg-gradient-to-r from-pink-500 to-amber-500 h-full rounded-full transition-all"
+                                style={{ width: `${percent}%` }}
+                              />
+                            </div>
+                            <div className="flex justify-between text-xs font-mono text-slate-500 pt-0.5">
+                              <span>已集氣：{(p.current_votes || 0).toLocaleString()} 票 ({percent}%)</span>
+                              <span>目標：{(p.target_votes || 10000).toLocaleString()} 票</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* 操作按鈕 */}
+                        <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
+                          <span className="text-[11px] text-slate-400">
+                            {p.status === 'active' ? '首頁展示進行中' : '未在首頁推薦'}
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setEditingPledge({
+                                  ...p,
+                                  start_time: formatToDatetimeLocal(p.start_time),
+                                  end_time: formatToDatetimeLocal(p.end_time),
+                                })
+                              }
+                              className="px-3 py-1.5 rounded-lg bg-pink-50 hover:bg-pink-100 text-pink-700 text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                            >
+                              <Edit className="w-3.5 h-3.5" />
+                              <span>編輯</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeletePledge(p.id, p.title)}
+                              className="px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>刪除</span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* 新增 / 編輯許願池彈窗 */}
+            {editingPledge && (
+              <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+                <div
+                  className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-2xl my-8 overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in zoom-in-95 duration-200"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/90 shrink-0">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-9 h-9 rounded-xl bg-pink-100 text-pink-600 flex items-center justify-center font-bold">
+                        {editingPledge.isNew ? <Plus className="w-5 h-5" /> : <Edit className="w-5 h-5" />}
+                      </div>
+                      <div>
+                        <h3 className="text-base font-black text-slate-900">
+                          {editingPledge.isNew ? '新增應援許願池項目' : '編輯應援許願池資料'}
+                        </h3>
+                        <p className="text-xs text-slate-400">
+                          {editingPledge.isNew ? '將直接寫入 Supabase pledge_wishes 資料表' : `許願序號 ID: #${editingPledge.id}`}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setEditingPledge(null)}
+                      className="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  <form onSubmit={handleSavePledge} className="flex-1 overflow-y-auto p-6 space-y-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        許願池標題 (Title) <span className="text-rose-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={editingPledge.title || ''}
+                        onChange={(e) => setEditingPledge({ ...editingPledge, title: e.target.value })}
+                        placeholder="例如：台北捷運全線燈箱應援企劃 · 五條悟領域展開 2026"
+                        className="block w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm focus:border-pink-500 focus:ring-1 focus:ring-pink-500 bg-white"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        簡介文案 / 口號 (Description)
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={editingPledge.description || ''}
+                        onChange={(e) => setEditingPledge({ ...editingPledge, description: e.target.value })}
+                        placeholder="請輸入許願活動口號與達標獎勵說明..."
+                        className="block w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm focus:border-pink-500 focus:ring-1 focus:ring-pink-500 bg-white resize-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        封面圖片網址 (Image URL)
+                      </label>
+                      <input
+                        type="text"
+                        value={editingPledge.image_url || ''}
+                        onChange={(e) => setEditingPledge({ ...editingPledge, image_url: e.target.value })}
+                        placeholder="https://..."
+                        className="block w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm focus:border-pink-500 focus:ring-1 focus:ring-pink-500 bg-white"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          目前票數 (Current Votes)
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={editingPledge.current_votes ?? 0}
+                          onChange={(e) => setEditingPledge({ ...editingPledge, current_votes: Number(e.target.value) })}
+                          className="block w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm font-mono focus:border-pink-500 bg-white"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          目標票數 (Target Votes)
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={editingPledge.target_votes ?? 10000}
+                          onChange={(e) => setEditingPledge({ ...editingPledge, target_votes: Number(e.target.value) })}
+                          className="block w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm font-mono focus:border-pink-500 bg-white"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          活動狀態 (Status)
+                        </label>
+                        <select
+                          value={editingPledge.status || 'active'}
+                          onChange={(e) => setEditingPledge({ ...editingPledge, status: e.target.value })}
+                          className="block w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm focus:border-pink-500 bg-white"
+                        >
+                          <option value="active">🔥 進行中 (Active)</option>
+                          <option value="upcoming">⏳ 排程準備中 (Upcoming)</option>
+                          <option value="completed">🏁 已達標結束 (Completed)</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* 活動時間排程 */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-slate-100">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
+                          <Calendar className="w-3.5 h-3.5 text-pink-500" />
+                          <span>開始時間 (Start Time)</span>
+                        </label>
+                        <input
+                          type="datetime-local"
+                          value={editingPledge.start_time || ''}
+                          onChange={(e) => setEditingPledge({ ...editingPledge, start_time: e.target.value })}
+                          className="block w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm font-mono focus:border-pink-500 bg-white"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
+                          <Calendar className="w-3.5 h-3.5 text-purple-500" />
+                          <span>結束時間 (End Time)</span>
+                        </label>
+                        <input
+                          type="datetime-local"
+                          value={editingPledge.end_time || ''}
+                          onChange={(e) => setEditingPledge({ ...editingPledge, end_time: e.target.value })}
+                          className="block w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm font-mono focus:border-pink-500 bg-white"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setEditingPledge(null)}
+                        className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 bg-white border border-slate-300 hover:bg-slate-50 transition cursor-pointer"
+                      >
+                        取消
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isSavingPledge}
+                        className="px-5 py-2 rounded-xl text-xs font-bold text-white bg-pink-600 hover:bg-pink-700 shadow-md transition cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+                      >
+                        {isSavingPledge ? (
+                          <>
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            <span>儲存中...</span>
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>{editingPledge.isNew ? '確認新增許願池' : '儲存變更'}</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ==========================================
+            Tab 4: collabs (聯名許願集氣與抽獎)
         ========================================== */}
         {activeTab === 'collabs' && (
           <div className="space-y-8">
             {/* 許願清單 */}
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 sm:p-8">
-              <h2 className="text-xl sm:text-2xl font-black text-slate-900 mb-2">
-                🎁 聯名許願集氣清單
-              </h2>
-              <p className="text-sm text-slate-500 mb-6">
-                粉絲發起之品牌跨界許願，資料直連 Supabase collab_wishes 資料庫。
-              </p>
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+                <div>
+                  <h2 className="text-xl sm:text-2xl font-black text-slate-900 flex items-center gap-2">
+                    <Gift className="w-6 h-6 text-pink-500" />
+                    🎁 聯名許願集氣清單管理
+                  </h2>
+                  <p className="text-sm text-slate-500 mt-1">
+                    粉絲發起之品牌跨界許願企劃，資料直連 Supabase collab_wishes 資料庫。
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleNewCollab}
+                  className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-pink-500 to-rose-600 hover:from-pink-600 hover:to-rose-700 text-white font-bold text-xs shadow-md hover:shadow-lg transition flex items-center gap-1.5 cursor-pointer shrink-0"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>新增聯名許願</span>
+                </button>
+              </div>
 
               {collabWishes.length === 0 ? (
                 <div className="text-center py-12 bg-slate-50 border border-dashed border-slate-200 rounded-2xl text-slate-400 text-sm">
-                  目前尚無聯名許願提案。
+                  目前尚無聯名許願提案，點擊上方按鈕建立新企劃！
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  {collabWishes.map((c) => (
-                    <div
-                      key={c.id}
-                      className="border border-slate-200 rounded-2xl p-5 bg-white hover:shadow-md transition"
-                    >
-                      <div className="flex justify-between items-start mb-2">
-                        <span className="text-xs font-bold px-2.5 py-1 rounded bg-purple-50 text-purple-700 border border-purple-100">
-                          {c.brand} × {c.idol}
-                        </span>
-                        <span className="text-xs font-bold text-pink-600">{c.status}</span>
+                  {collabWishes.map((c) => {
+                    const percent = Math.min(100, Math.round(((c.votes || 0) / (c.target || 15000)) * 100))
+                    return (
+                      <div
+                        key={c.id}
+                        className="border border-slate-200 rounded-2xl p-5 bg-white hover:shadow-md transition flex flex-col justify-between space-y-4"
+                      >
+                        <div className="space-y-3">
+                          <div className="flex justify-between items-start gap-2">
+                            <span className="text-xs font-bold px-2.5 py-1 rounded bg-purple-50 text-purple-700 border border-purple-100">
+                              {c.brand} × {c.idol}
+                            </span>
+                            <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-pink-50 text-pink-600 border border-pink-100">
+                              {c.status}
+                            </span>
+                          </div>
+
+                          <h4 className="font-bold text-slate-900 text-base leading-snug">{c.theme}</h4>
+
+                          {/* 檔期起訖時間 */}
+                          {(c.start_time || c.end_time) && (
+                            <div className="flex items-center gap-1.5 text-[11px] font-mono text-slate-500 bg-slate-50 border border-slate-100 px-2.5 py-1 rounded-lg w-fit">
+                              <Calendar className="w-3.5 h-3.5 text-pink-500 shrink-0" />
+                              <span>
+                                {c.start_time ? formatDisplayDateTime(c.start_time) : '即日起'}
+                                {' ~ '}
+                                {c.end_time ? formatDisplayDateTime(c.end_time) : '無限期'}
+                              </span>
+                            </div>
+                          )}
+
+                          <div className="space-y-1">
+                            <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
+                              <div
+                                className="bg-gradient-to-r from-pink-500 to-rose-500 h-full rounded-full transition-all"
+                                style={{ width: `${percent}%` }}
+                              />
+                            </div>
+                            <div className="flex justify-between text-xs text-slate-500 font-medium">
+                              <span>集氣：{(c.votes || 0).toLocaleString()} 票 ({percent}%)</span>
+                              <span>目標：{(c.target || 15000).toLocaleString()} 票</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* 底部操作按鈕 */}
+                        <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
+                          <span className="text-[11px] text-slate-400 font-mono">ID: #{c.id}</span>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setEditingCollab({
+                                  ...c,
+                                  start_time: formatToDatetimeLocal(c.start_time),
+                                  end_time: formatToDatetimeLocal(c.end_time),
+                                })
+                              }
+                              className="px-3 py-1.5 rounded-lg bg-pink-50 hover:bg-pink-100 text-pink-700 text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                            >
+                              <Edit className="w-3.5 h-3.5" />
+                              <span>編輯</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteCollab(c.id, c.theme)}
+                              className="px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>刪除</span>
+                            </button>
+                          </div>
+                        </div>
                       </div>
-                      <h4 className="font-bold text-slate-900 text-base mb-3">{c.theme}</h4>
-                      <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden mb-2">
-                        <div
-                          className="bg-pink-500 h-full rounded-full"
-                          style={{
-                            width: `${Math.min(100, Math.round(((c.votes || 0) / (c.target || 15000)) * 100))}%`,
-                          }}
-                        />
-                      </div>
-                      <div className="flex justify-between text-xs text-slate-500 font-medium">
-                        <span>集氣：{(c.votes || 0).toLocaleString()} 票</span>
-                        <span>目標：{(c.target || 15000).toLocaleString()} 票</span>
-                      </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
             </div>
+
+            {/* 新增 / 編輯聯名許願彈窗 */}
+            {editingCollab && (
+              <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+                <div
+                  className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-2xl my-8 overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in zoom-in-95 duration-200"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/90 shrink-0">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-9 h-9 rounded-xl bg-pink-100 text-pink-600 flex items-center justify-center font-bold">
+                        {editingCollab.isNew ? <Plus className="w-5 h-5" /> : <Edit className="w-5 h-5" />}
+                      </div>
+                      <div>
+                        <h3 className="text-base font-black text-slate-900">
+                          {editingCollab.isNew ? '新增聯名許願企劃' : '編輯聯名許願企劃'}
+                        </h3>
+                        <p className="text-xs text-slate-400">
+                          {editingCollab.isNew ? '將直接寫入 Supabase collab_wishes 資料表' : `企劃序號 ID: #${editingCollab.id}`}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setEditingCollab(null)}
+                      className="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  <form onSubmit={handleSaveCollab} className="flex-1 overflow-y-auto p-6 space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          聯名品牌 (Brand) <span className="text-rose-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={editingCollab.brand || ''}
+                          onChange={(e) => setEditingCollab({ ...editingCollab, brand: e.target.value })}
+                          placeholder="例如：animate 安利美特、UNIQLO"
+                          className="block w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm focus:border-pink-500 bg-white"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          合作偶像 / 本命 (Idol) <span className="text-rose-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={editingCollab.idol || ''}
+                          onChange={(e) => setEditingCollab({ ...editingCollab, idol: e.target.value })}
+                          placeholder="例如：《咒術迴戰》五條悟、IVE 張員瑛"
+                          className="block w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm focus:border-pink-500 bg-white"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        聯名主題企劃 (Theme) <span className="text-rose-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={editingCollab.theme || ''}
+                        onChange={(e) => setEditingCollab({ ...editingCollab, theme: e.target.value })}
+                        placeholder="例如：特設主題應援咖啡廳與限量特典杯墊"
+                        className="block w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm focus:border-pink-500 bg-white"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          當前集氣票數 (Votes)
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={editingCollab.votes ?? 0}
+                          onChange={(e) => setEditingCollab({ ...editingCollab, votes: Number(e.target.value) })}
+                          className="block w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm font-mono focus:border-pink-500 bg-white"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          集氣目標門檻 (Target)
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={editingCollab.target ?? 15000}
+                          onChange={(e) => setEditingCollab({ ...editingCollab, target: Number(e.target.value) })}
+                          className="block w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm font-mono focus:border-pink-500 bg-white"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          狀態標籤 (Status)
+                        </label>
+                        <select
+                          value={editingCollab.status || '集氣連署中'}
+                          onChange={(e) => setEditingCollab({ ...editingCollab, status: e.target.value })}
+                          className="block w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm focus:border-pink-500 bg-white"
+                        >
+                          <option value="集氣連署中">集氣連署中</option>
+                          <option value="商務評估中">商務評估中</option>
+                          <option value="洽談簽約中">洽談簽約中</option>
+                          <option value="籌備募票中">籌備募票中</option>
+                          <option value="募氣達標中">募氣達標中</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* 活動時間排程 */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-slate-100">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
+                          <Calendar className="w-3.5 h-3.5 text-pink-500" />
+                          <span>活動開始時間 (Start Time)</span>
+                        </label>
+                        <input
+                          type="datetime-local"
+                          value={editingCollab.start_time || ''}
+                          onChange={(e) => setEditingCollab({ ...editingCollab, start_time: e.target.value })}
+                          className="block w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm font-mono focus:border-pink-500 bg-white"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
+                          <Calendar className="w-3.5 h-3.5 text-purple-500" />
+                          <span>活動結束時間 (End Time)</span>
+                        </label>
+                        <input
+                          type="datetime-local"
+                          value={editingCollab.end_time || ''}
+                          onChange={(e) => setEditingCollab({ ...editingCollab, end_time: e.target.value })}
+                          className="block w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm font-mono focus:border-pink-500 bg-white"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setEditingCollab(null)}
+                        className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 bg-white border border-slate-300 hover:bg-slate-50 transition cursor-pointer"
+                      >
+                        取消
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isSavingCollab}
+                        className="px-5 py-2 rounded-xl text-xs font-bold text-white bg-pink-600 hover:bg-pink-700 shadow-md transition cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+                      >
+                        {isSavingCollab ? (
+                          <>
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            <span>儲存中...</span>
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>{editingCollab.isNew ? '確認建立聯名企劃' : '儲存變更'}</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
 
             {/* 真實會員抽獎系統 */}
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 sm:p-8">

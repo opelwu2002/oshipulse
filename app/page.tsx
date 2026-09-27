@@ -42,21 +42,35 @@ export default function HomePage() {
   } = useAppStore();
   const [selectedFilter, setSelectedFilter] = useState<string>("ALL");
   const [dbIdols, setDbIdols] = useState<any[]>([]);
+  const [dbPledge, setDbPledge] = useState<any>(null);
 
-  // 🛡️ 即時同步：首頁載入時向 API 取得最新真實角色與圖片網址
+  // 🛡️ 即時同步：首頁載入時向 API 取得最新真實角色與應援許願池
   useEffect(() => {
-    async function loadLatestIdols() {
+    async function loadLatestData() {
       try {
-        const res = await fetch(`/api/admin/idols?t=${Date.now()}`);
-        const json = await res.json();
-        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
-          setDbIdols(json.data);
+        const [idolsRes, pledgesRes] = await Promise.all([
+          fetch(`/api/admin/idols?t=${Date.now()}`),
+          fetch(`/api/admin/pledges?t=${Date.now()}`),
+        ]);
+        
+        const idolsJson = await idolsRes.json();
+        if (idolsJson.success && Array.isArray(idolsJson.data) && idolsJson.data.length > 0) {
+          setDbIdols(idolsJson.data);
+        }
+
+        const pledgesJson = await pledgesRes.json();
+        if (pledgesJson.success) {
+          if (pledgesJson.active) {
+            setDbPledge(pledgesJson.active);
+          } else if (Array.isArray(pledgesJson.data) && pledgesJson.data.length > 0) {
+            setDbPledge(pledgesJson.data[0]);
+          }
         }
       } catch (err) {
-        console.warn("首頁載入資料庫偶像失敗，使用本地備援:", err);
+        console.warn("首頁載入資料庫資料失敗，使用本地備援:", err);
       }
     }
-    loadLatestIdols();
+    loadLatestData();
   }, []);
 
   // 統一資料來源：資料庫優先，並對齊 image_url / avatar 實體欄位，徹底排除偽色塊
@@ -98,6 +112,43 @@ export default function HomePage() {
   const activeBattle = battles.find((b) => b.status === "live") || battles[0];
   const featuredCollab = collabs[0];
   const featuredProduct = products[0];
+
+  // 🛡️ 應援許願池 (Pledging)：優先使用資料庫中進行中項目，若無則降級為本地項目
+  const displayPledge = useMemo(() => {
+    if (dbPledge) {
+      const cur = Number(dbPledge.current_votes || 0);
+      const tar = Number(dbPledge.target_votes || 10000);
+      return {
+        id: dbPledge.id,
+        title: dbPledge.title,
+        description: dbPledge.description,
+        current_votes: cur,
+        target_votes: tar,
+        image_url: dbPledge.image_url,
+        start_time: dbPledge.start_time,
+        end_time: dbPledge.end_time,
+        status: dbPledge.status || 'active',
+        percent: tar > 0 ? Math.round((cur / tar) * 100) : 0,
+      };
+    }
+    if (featuredCollab) {
+      const cur = featuredCollab.pledge_count || 0;
+      const tar = featuredCollab.pledge_goal || 10000;
+      return {
+        id: featuredCollab.id,
+        title: featuredCollab.title,
+        description: featuredCollab.details_markdown,
+        current_votes: cur,
+        target_votes: tar,
+        image_url: featuredCollab.banner_url || null,
+        start_time: null,
+        end_time: null,
+        status: 'active',
+        percent: tar > 0 ? Math.round((cur / tar) * 100) : 0,
+      };
+    }
+    return null;
+  }, [dbPledge, featuredCollab]);
 
   const filterTabs = [
     { code: "ALL", name: "全部本命與角色" },
@@ -323,47 +374,55 @@ export default function HomePage() {
           </div>
         )}
 
-        {/* 卡片 3: 聯名許願池預告 */}
-        {featuredCollab && (
-          <div className="bento-card col-span-1 md:col-span-1 lg:col-span-2 p-6 flex flex-col justify-between">
+        {/* 卡片 3: 應援許願池 (Pledging) 連動預告 */}
+        {displayPledge && (
+          <div className="bento-card col-span-1 md:col-span-1 lg:col-span-2 p-6 flex flex-col justify-between relative overflow-hidden group">
             <div>
               <div className="flex items-center justify-between mb-3">
-                <span className="px-2.5 py-1 bg-rose-50 text-cyber-rose rounded-full text-xs font-black">
+                <span className="px-2.5 py-1 bg-rose-50 text-cyber-rose rounded-full text-xs font-black flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-cyber-rose animate-ping" />
                   應援許願中 · Pledging
                 </span>
                 <span className="text-xs font-bold text-slate-500">
-                  {Math.round((featuredCollab.pledge_count / featuredCollab.pledge_goal) * 100)}% 達成
+                  {displayPledge.percent}% 達成
                 </span>
               </div>
               <h3 className="text-lg font-black text-slate-900 mb-1">
-                {featuredCollab.title}
+                {displayPledge.title}
               </h3>
-              <p className="text-xs text-slate-600 mb-4 line-clamp-2">
-                {featuredCollab.details_markdown}
+              <p className="text-xs text-slate-600 mb-3 line-clamp-2">
+                {displayPledge.description}
               </p>
+
+              {/* 活動期程（若有設定排程時間） */}
+              {(displayPledge.start_time || displayPledge.end_time) && (
+                <div className="mb-3.5 px-3 py-1.5 bg-slate-50 rounded-xl border border-slate-100 flex items-center gap-1.5 text-[11px] text-slate-500 font-mono">
+                  <span className="text-cyber-rose font-bold">集氣期程：</span>
+                  <span>{displayPledge.start_time ? displayPledge.start_time.replace("T", " ") : "即刻起"}</span>
+                  <span>~</span>
+                  <span>{displayPledge.end_time ? displayPledge.end_time.replace("T", " ") : "達標為止"}</span>
+                </div>
+              )}
 
               {/* 進度條 */}
               <div className="space-y-1.5 mb-4">
                 <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-gradient-to-r from-cyber-rose to-amber-500 rounded-full transition-all"
+                    className="h-full bg-gradient-to-r from-cyber-rose to-amber-500 rounded-full transition-all duration-500"
                     style={{
-                      width: `${Math.min(
-                        (featuredCollab.pledge_count / featuredCollab.pledge_goal) * 100,
-                        100
-                      )}%`,
+                      width: `${Math.min(displayPledge.percent, 100)}%`,
                     }}
                   />
                 </div>
                 <div className="flex justify-between text-[11px] font-mono text-slate-500">
-                  <span>已集氣 {formatNumber(featuredCollab.pledge_count)} 票</span>
-                  <span>目標 {formatNumber(featuredCollab.pledge_goal)} 票</span>
+                  <span>已集氣 {formatNumber(displayPledge.current_votes)} 票</span>
+                  <span>目標 {formatNumber(displayPledge.target_votes)} 票</span>
                 </div>
               </div>
             </div>
 
             <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
-              <span className="text-xs text-slate-500">達標釋出門票抽獎</span>
+              <span className="text-xs text-slate-500">達標釋出門票抽獎與實體活動</span>
               <Link
                 href="/collabs"
                 className="text-xs font-bold text-cyber-rose hover:underline flex items-center gap-1"

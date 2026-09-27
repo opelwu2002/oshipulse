@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import SafeImage from "@/components/SafeImage";
 import Link from "next/link";
 import { useAppStore } from "@/lib/store";
@@ -14,16 +14,98 @@ import {
   Gift,
   ExternalLink,
   Flame,
+  Clock,
+  Building2,
 } from "lucide-react";
 
 export default function CollabsPage() {
   const { collabs, idols, events, pledgeCollab } = useAppStore();
+  const [dbCollabs, setDbCollabs] = useState<any[]>([]);
+  const [localVotesMap, setLocalVotesMap] = useState<Record<string, number>>({});
   const [pledgedSuccessId, setPledgedSuccessId] = useState<string | null>(null);
 
-  const handlePledge = (collabId: string) => {
-    pledgeCollab(collabId);
+  // 🛡️ 即時同步：載入後台資料庫儲存的聯名許願集氣項目
+  useEffect(() => {
+    async function loadDbCollabs() {
+      try {
+        const res = await fetch(`/api/admin/collabs?t=${Date.now()}`);
+        const json = await res.json();
+        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+          setDbCollabs(json.data);
+        }
+      } catch (err) {
+        console.warn("載入資料庫聯名許願失敗，使用本地備援:", err);
+      }
+    }
+    loadDbCollabs();
+  }, []);
+
+  // 統合聯名許願清單（資料庫優先，若無則降級為本地 Mock，並疊加樂觀投票增量）
+  const displayCollabs = useMemo(() => {
+    if (dbCollabs.length > 0) {
+      return dbCollabs.map((c) => {
+        const baseVotes = Number(c.current_votes || 0);
+        const addedVotes = localVotesMap[String(c.id)] || 0;
+        const currentVotes = baseVotes + addedVotes;
+        const targetVotes = Number(c.target_votes || 10000);
+        return {
+          id: String(c.id),
+          title: c.topic || `${c.brand || "品牌"} × ${c.idol || "偶像"} 跨界聯名集氣企劃`,
+          brand: c.brand || "跨界品牌",
+          idolName: c.idol || "本命偶像",
+          details_markdown: `由全體粉絲共同發起的【${c.brand || "品牌"} × ${c.idol || "偶像"}】跨界夢幻連動！達標即可正式向官方團隊與企業品牌遞交連署計畫書，解鎖快閃特企！`,
+          banner_url: c.image_url || "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800",
+          current_votes: currentVotes,
+          target_votes: targetVotes,
+          start_time: c.start_time,
+          end_time: c.end_time,
+          status: c.status || "pledging",
+        };
+      });
+    }
+
+    return collabs.map((c) => {
+      const addedVotes = localVotesMap[String(c.id)] || 0;
+      const idol = idols.find((i) => i.id === c.idol_id);
+      return {
+        id: String(c.id),
+        title: c.title,
+        brand: (c as any).brand || "官方特企",
+        idolName: idol?.name || "本命偶像",
+        details_markdown: c.details_markdown,
+        banner_url: c.banner_url,
+        current_votes: c.pledge_count + addedVotes,
+        target_votes: c.pledge_goal,
+        start_time: null,
+        end_time: null,
+        status: c.status,
+      };
+    });
+  }, [dbCollabs, collabs, idols, localVotesMap]);
+
+  // 投票累加連動：樂觀更新 + 寫入資料庫
+  const handlePledge = async (collabId: string) => {
+    // 1. 本地樂觀票數即時累加
+    setLocalVotesMap((prev) => ({
+      ...prev,
+      [collabId]: (prev[collabId] || 0) + 1,
+    }));
     setPledgedSuccessId(collabId);
     setTimeout(() => setPledgedSuccessId(null), 3000);
+
+    // 2. 同步更新本地 Store 狀態
+    pledgeCollab(collabId);
+
+    // 3. 發送至後端 API 即時寫入 Supabase 資料庫
+    try {
+      await fetch("/api/admin/collabs", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: collabId, increment: 1 }),
+      });
+    } catch (err) {
+      console.warn("同步連署票數至資料庫失敗:", err);
+    }
   };
 
   return (
@@ -145,21 +227,20 @@ export default function CollabsPage() {
             <Sparkles className="w-5 h-5 text-amber-500 fill-amber-500" />
             <h2 className="text-xl font-black text-slate-900">粉絲跨界願望池 (Fan Wish Pool)</h2>
             <span className="px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 text-xs font-bold">
-              連署募集中
+              {displayCollabs.length} 個連署企劃火熱募集中
             </span>
           </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          {collabs.map((collab) => {
-            const idol = idols.find((i) => i.id === collab.idol_id);
-            const percent = Math.min(Math.round((collab.pledge_count / collab.pledge_goal) * 100), 100);
+          {displayCollabs.map((collab) => {
+            const percent = Math.min(Math.round((collab.current_votes / collab.target_votes) * 100), 100);
             const isPledged = pledgedSuccessId === collab.id;
 
             return (
               <div
                 key={collab.id}
-                className="bento-card p-6 flex flex-col justify-between space-y-5"
+                className="bento-card p-6 flex flex-col justify-between space-y-5 hover:border-slate-300 transition-all"
               >
                 <div className="space-y-4">
                   {/* 橫幅大圖 */}
@@ -171,17 +252,24 @@ export default function CollabsPage() {
                       className="object-cover"
                       unoptimized
                     />
-                    <div className="absolute top-3 left-3 bg-white/95 backdrop-blur-sm px-3 py-1 rounded-full text-xs font-black text-cyber-rose shadow-sm">
-                      {percent >= 100 ? "已達標！即將落地" : `集氣進度 ${percent}%`}
+                    <div className="absolute top-3 left-3 bg-white/95 backdrop-blur-sm px-3 py-1 rounded-full text-xs font-black text-cyber-rose shadow-sm flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-cyber-rose animate-pulse" />
+                      <span>{percent >= 100 ? "已達標！即將落地" : `集氣進度 ${percent}%`}</span>
                     </div>
                   </div>
 
                   {/* 主題與內容 */}
                   <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      {idol && (
-                        <span className="text-xs font-bold text-cyber-violet bg-purple-50 px-2 py-0.5 rounded-md">
-                          {idol.name} 應援企劃
+                    <div className="flex flex-wrap items-center gap-2">
+                      {collab.brand && (
+                        <span className="inline-flex items-center gap-1 text-xs font-bold text-cyber-violet bg-purple-50 px-2 py-0.5 rounded-md">
+                          <Building2 className="w-3 h-3" />
+                          {collab.brand}
+                        </span>
+                      )}
+                      {collab.idolName && (
+                        <span className="inline-flex items-center gap-1 text-xs font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-md">
+                          ✦ {collab.idolName}
                         </span>
                       )}
                       <span className="text-xs text-slate-400 font-mono">
@@ -194,21 +282,13 @@ export default function CollabsPage() {
                     </p>
                   </div>
 
-                  {/* 活動時間與場地 (若有) */}
-                  {(collab.event_date || collab.event_venue) && (
-                    <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 space-y-1.5 text-xs text-slate-600">
-                      {collab.event_date && (
-                        <div className="flex items-center gap-2">
-                          <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                          <span>預計日程：{new Date(collab.event_date).toLocaleDateString("zh-TW")}</span>
-                        </div>
-                      )}
-                      {collab.event_venue && (
-                        <div className="flex items-center gap-2">
-                          <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                          <span>預定會場：{collab.event_venue}</span>
-                        </div>
-                      )}
+                  {/* 活動時間區間排程 (若有設定) */}
+                  {(collab.start_time || collab.end_time) && (
+                    <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 flex items-center gap-2 text-xs text-slate-600 font-mono">
+                      <Clock className="w-3.5 h-3.5 text-cyber-rose shrink-0" />
+                      <span>
+                        活動期程：{collab.start_time ? collab.start_time.replace("T", " ") : "即刻起"} ~ {collab.end_time ? collab.end_time.replace("T", " ") : "達標為止"}
+                      </span>
                     </div>
                   )}
 
@@ -216,10 +296,10 @@ export default function CollabsPage() {
                   <div className="space-y-2">
                     <div className="flex justify-between items-center text-xs font-mono">
                       <span className="font-bold text-slate-800">
-                        已凝聚 {formatNumber(collab.pledge_count)} 人次連署
+                        已凝聚 {formatNumber(collab.current_votes)} 人次連署
                       </span>
                       <span className="text-slate-500">
-                        目標 {formatNumber(collab.pledge_goal)} 人次
+                        目標 {formatNumber(collab.target_votes)} 人次
                       </span>
                     </div>
                     <div className="w-full h-3.5 bg-slate-100 rounded-full overflow-hidden p-0.5">

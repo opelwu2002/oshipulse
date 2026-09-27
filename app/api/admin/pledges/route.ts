@@ -4,43 +4,63 @@ import { getSupabaseAdminClient } from "@/lib/supabase";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-// GET: 取得聯名許願集氣列表
+// GET: 取得許願池列表與當前進行中許願池
 export async function GET() {
   try {
     const supabaseAdmin = getSupabaseAdminClient();
     const { data, error } = await supabaseAdmin
-      .from("collab_wishes")
+      .from("pledge_wishes")
       .select("*")
       .order("id", { ascending: false });
 
     if (error) {
       const isMissing = error.code === "PGRST205" || error.message.includes("does not exist");
-      return NextResponse.json({ success: false, tableMissing: isMissing, message: error.message }, { status: 200 });
+      return NextResponse.json(
+        { success: false, tableMissing: isMissing, message: error.message },
+        { status: 200 }
+      );
     }
 
-    return NextResponse.json({ success: true, data: data || [] });
+    const pledges = data || [];
+    // 優先挑選狀態為 active 進行中的許願池，若無則取最新一筆
+    const activePledge = pledges.find((p: any) => p.status === "active") || pledges[0] || null;
+
+    return NextResponse.json({
+      success: true,
+      pledges,
+      pledge: activePledge,
+    });
   } catch (err: any) {
     return NextResponse.json({ success: false, message: err.message }, { status: 500 });
   }
 }
 
-// POST: 新增聯名許願項目
+// POST: 新增應援許願池項目
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { brand, idol, theme, target, votes, status, start_time, end_time } = body;
+    const {
+      title,
+      description,
+      image_url,
+      current_votes,
+      target_votes,
+      start_time,
+      end_time,
+      status,
+    } = body;
 
-    if (!brand || !idol || !theme) {
-      return NextResponse.json({ success: false, message: "品牌、偶像與聯名主題企劃皆為必填！" }, { status: 400 });
+    if (!title) {
+      return NextResponse.json({ success: false, message: "許願池標題為必填欄位" }, { status: 400 });
     }
 
     const insertPayload: any = {
-      brand: brand.trim(),
-      idol: idol.trim(),
-      theme: theme.trim(),
-      votes: Number(votes) || 0,
-      target: Number(target) || 15000,
-      status: status || "集氣連署中",
+      title: title.trim(),
+      description: description || "",
+      image_url: image_url || "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=1200",
+      current_votes: Number(current_votes) || 0,
+      target_votes: Number(target_votes) || 10000,
+      status: status || "active",
       start_time: start_time ? new Date(start_time).toISOString() : null,
       end_time: end_time ? new Date(end_time).toISOString() : null,
       created_at: new Date().toISOString(),
@@ -48,17 +68,17 @@ export async function POST(request: Request) {
 
     const supabaseAdmin = getSupabaseAdminClient();
     let { data, error } = await supabaseAdmin
-      .from("collab_wishes")
+      .from("pledge_wishes")
       .insert([insertPayload])
       .select();
 
     // 防呆相容：若資料表尚未補齊 start_time/end_time 欄位導致報錯，進行降級寫入
     if (error && (error.code === "PGRST204" || error.message.includes("start_time") || error.message.includes("end_time"))) {
-      console.warn("Supabase collab_wishes 資料表尚未包含 start_time/end_time 欄位，進行降級寫入...");
+      console.warn("Supabase pledge_wishes 資料表尚未包含 start_time/end_time 欄位，進行降級寫入...");
       const fallbackPayload = { ...insertPayload };
       delete fallbackPayload.start_time;
       delete fallbackPayload.end_time;
-      const retry = await supabaseAdmin.from("collab_wishes").insert([fallbackPayload]).select();
+      const retry = await supabaseAdmin.from("pledge_wishes").insert([fallbackPayload]).select();
       data = retry.data;
       error = retry.error;
     }
@@ -69,44 +89,55 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      message: "聯名許願項目已成功建立！",
-      collab: data?.[0],
+      message: "應援許願池項目已成功建立！",
+      pledge: data?.[0],
     });
   } catch (err: any) {
     return NextResponse.json({ success: false, message: err.message }, { status: 500 });
   }
 }
 
-// PUT: 編輯聯名許願或前台連署投票累加
+// PUT: 編輯許願池或前台應援票數累加
 export async function PUT(request: Request) {
   try {
     const body = await request.json();
-    const { id, brand, idol, theme, target, votes, status, start_time, end_time, increment } = body;
+    const {
+      id,
+      title,
+      description,
+      image_url,
+      current_votes,
+      target_votes,
+      start_time,
+      end_time,
+      status,
+      increment,
+    } = body;
 
     if (!id) {
-      return NextResponse.json({ success: false, message: "缺少聯名許願 ID" }, { status: 400 });
+      return NextResponse.json({ success: false, message: "缺少許願池 ID" }, { status: 400 });
     }
 
     const supabaseAdmin = getSupabaseAdminClient();
 
-    // 模式 A：前台集氣連署票數累加 (Atomic Increment)
+    // 模式 A：前台點擊「+1 願望」即時累加票數
     if (increment !== undefined) {
-      const { data: currentWish, error: fetchErr } = await supabaseAdmin
-        .from("collab_wishes")
-        .select("votes")
+      const { data: currentPledge, error: fetchErr } = await supabaseAdmin
+        .from("pledge_wishes")
+        .select("current_votes")
         .eq("id", id)
         .single();
 
-      if (fetchErr || !currentWish) {
-        return NextResponse.json({ success: false, message: "找不到該聯名許願項目" }, { status: 404 });
+      if (fetchErr || !currentPledge) {
+        return NextResponse.json({ success: false, message: "找不到該許願池項目" }, { status: 404 });
       }
 
       const inc = Number(increment) || 1;
-      const nextVotes = (Number(currentWish.votes) || 0) + inc;
+      const nextVotes = (Number(currentPledge.current_votes) || 0) + inc;
 
       const { data: updated, error: updateErr } = await supabaseAdmin
-        .from("collab_wishes")
-        .update({ votes: nextVotes })
+        .from("pledge_wishes")
+        .update({ current_votes: nextVotes })
         .eq("id", id)
         .select();
 
@@ -116,18 +147,18 @@ export async function PUT(request: Request) {
 
       return NextResponse.json({
         success: true,
-        message: "聯名集氣連署已成功即時寫入資料庫！",
-        collab: updated?.[0],
+        message: "集氣票數已成功即時寫入資料庫！",
+        pledge: updated?.[0],
       });
     }
 
-    // 模式 B：後台完整編輯或更新
+    // 模式 B：後台完整編輯或更新欄位
     const updatePayload: any = {};
-    if (brand !== undefined) updatePayload.brand = brand.trim();
-    if (idol !== undefined) updatePayload.idol = idol.trim();
-    if (theme !== undefined) updatePayload.theme = theme.trim();
-    if (votes !== undefined) updatePayload.votes = Number(votes);
-    if (target !== undefined) updatePayload.target = Number(target);
+    if (title !== undefined) updatePayload.title = title.trim();
+    if (description !== undefined) updatePayload.description = description;
+    if (image_url !== undefined) updatePayload.image_url = image_url;
+    if (current_votes !== undefined) updatePayload.current_votes = Number(current_votes);
+    if (target_votes !== undefined) updatePayload.target_votes = Number(target_votes);
     if (status !== undefined) updatePayload.status = status;
     if (start_time !== undefined) {
       updatePayload.start_time = start_time ? new Date(start_time).toISOString() : null;
@@ -137,18 +168,18 @@ export async function PUT(request: Request) {
     }
 
     let { data, error } = await supabaseAdmin
-      .from("collab_wishes")
+      .from("pledge_wishes")
       .update(updatePayload)
       .eq("id", id)
       .select();
 
     // 防呆相容降級
     if (error && (error.code === "PGRST204" || error.message.includes("start_time") || error.message.includes("end_time"))) {
-      console.warn("Supabase collab_wishes 資料表尚未包含 start_time/end_time 欄位，進行降級更新...");
+      console.warn("Supabase pledge_wishes 資料表尚未包含 start_time/end_time 欄位，進行降級更新...");
       const fallbackPayload = { ...updatePayload };
       delete fallbackPayload.start_time;
       delete fallbackPayload.end_time;
-      const retry = await supabaseAdmin.from("collab_wishes").update(fallbackPayload).eq("id", id).select();
+      const retry = await supabaseAdmin.from("pledge_wishes").update(fallbackPayload).eq("id", id).select();
       data = retry.data;
       error = retry.error;
     }
@@ -159,15 +190,15 @@ export async function PUT(request: Request) {
 
     return NextResponse.json({
       success: true,
-      message: "聯名許願項目已成功同步更新至資料庫！",
-      collab: data?.[0],
+      message: "許願池資料已成功同步更新至資料庫！",
+      pledge: data?.[0],
     });
   } catch (err: any) {
     return NextResponse.json({ success: false, message: err.message }, { status: 500 });
   }
 }
 
-// DELETE: 刪除聯名許願項目
+// DELETE: 刪除許願池項目
 export async function DELETE(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -183,11 +214,11 @@ export async function DELETE(request: Request) {
     }
 
     if (!id) {
-      return NextResponse.json({ success: false, message: "缺少聯名許願 ID" }, { status: 400 });
+      return NextResponse.json({ success: false, message: "缺少許願池 ID" }, { status: 400 });
     }
 
     const supabaseAdmin = getSupabaseAdminClient();
-    const { error } = await supabaseAdmin.from("collab_wishes").delete().eq("id", id);
+    const { error } = await supabaseAdmin.from("pledge_wishes").delete().eq("id", id);
 
     if (error) {
       return NextResponse.json({ success: false, message: error.message }, { status: 500 });
@@ -195,7 +226,7 @@ export async function DELETE(request: Request) {
 
     return NextResponse.json({
       success: true,
-      message: `聯名許願項目 #${id} 已成功從資料庫刪除！`,
+      message: `許願池項目 #${id} 已成功從資料庫刪除！`,
     });
   } catch (err: any) {
     return NextResponse.json({ success: false, message: err.message }, { status: 500 });

@@ -142,12 +142,42 @@ CREATE TABLE IF NOT EXISTS public.collab_wishes (
   votes INT DEFAULT 0,
   target INT DEFAULT 15000,
   status TEXT DEFAULT '集氣連署中',
+  start_time TIMESTAMPTZ,
+  end_time TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now())
 );
+
+-- 安全補齊 start_time 與 end_time 欄位（相容既有資料庫）
+ALTER TABLE public.collab_wishes ADD COLUMN IF NOT EXISTS start_time TIMESTAMPTZ;
+ALTER TABLE public.collab_wishes ADD COLUMN IF NOT EXISTS end_time TIMESTAMPTZ;
 
 ALTER TABLE public.collab_wishes ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Collab wishes full access" ON public.collab_wishes;
 CREATE POLICY "Collab wishes full access" ON public.collab_wishes FOR ALL USING (true) WITH CHECK (true);
+
+-- ------------------------------------------------------------------------------
+-- 6.1. 首頁應援許願池 (pledge_wishes / Pledging Pools)
+-- ------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.pledge_wishes (
+  id BIGSERIAL PRIMARY KEY,
+  title TEXT NOT NULL,
+  description TEXT,
+  image_url TEXT,
+  current_votes INT DEFAULT 0,
+  target_votes INT DEFAULT 10000,
+  start_time TIMESTAMPTZ,
+  end_time TIMESTAMPTZ,
+  status TEXT DEFAULT 'active',
+  created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now())
+);
+
+-- 安全補齊欄位（相容既有資料庫）
+ALTER TABLE public.pledge_wishes ADD COLUMN IF NOT EXISTS start_time TIMESTAMPTZ;
+ALTER TABLE public.pledge_wishes ADD COLUMN IF NOT EXISTS end_time TIMESTAMPTZ;
+
+ALTER TABLE public.pledge_wishes ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Pledge wishes full access" ON public.pledge_wishes;
+CREATE POLICY "Pledge wishes full access" ON public.pledge_wishes FOR ALL USING (true) WITH CHECK (true);
 
 -- ------------------------------------------------------------------------------
 -- 7. 商城訂單與出貨紀錄 (orders)
@@ -225,6 +255,12 @@ VALUES
   ('UNIQLO / GU', '《我獨自升級》成振宇', '全台限定暗影軍團潮流聯名 UT 與連帽外套', 15310, 15000, '商務評估中'),
   ('台灣麥當勞', 'IVE 張員瑛', 'Lucky Vicky 幸運應援分享餐與拍立得小卡', 12890, 15000, '集氣連署中'),
   ('藏壽司 Kura Sushi', '《吉伊卡哇》', '應援限定立體轉蛋扭蛋與獨家保冷袋', 11450, 15000, '集氣連署中')
+ON CONFLICT DO NOTHING;
+
+-- 4.1. 首頁應援許願池初始資料
+INSERT INTO public.pledge_wishes (title, description, image_url, current_votes, target_votes, status)
+VALUES
+  ('台北捷運全線燈箱應援企劃 · 五條悟領域展開 2026', '最強咒術師五條悟全線佔領！集氣滿額即解鎖台北捷運忠孝復興與台北車站巨型光箱廣告。', 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=1200', 7850, 10000, 'active')
 ON CONFLICT DO NOTHING;
 
 -- 5. 商城訂單初始資料
