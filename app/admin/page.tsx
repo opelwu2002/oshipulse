@@ -30,6 +30,7 @@ import {
   Sparkles,
   Copy,
   Info,
+  Image as ImageIcon,
 } from 'lucide-react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
@@ -55,6 +56,7 @@ export default function AdminPage() {
     status: '上架展示中',
     event_type: '線下實體展',
     location: '',
+    image_url: '',
     start_time: '',
     end_time: '',
   })
@@ -210,6 +212,7 @@ export default function AdminPage() {
       status: event.status || '上架展示中',
       event_type: event.event_type || '線下實體展',
       location: event.location || '',
+      image_url: event.image_url || '',
       start_time: formatToDatetimeLocal(event.start_time),
       end_time: formatToDatetimeLocal(event.end_time),
     })
@@ -230,6 +233,7 @@ export default function AdminPage() {
       status: '上架展示中',
       event_type: '線下實體展',
       location: '',
+      image_url: '',
       start_time: '',
       end_time: '',
     })
@@ -250,6 +254,7 @@ export default function AdminPage() {
         status: newEvent.status || '上架展示中',
         event_type: newEvent.event_type || '線下實體展',
         location: (newEvent.location || '').trim(),
+        image_url: (newEvent.image_url || '').trim() || null,
         google_maps_url: googleMapsUrl,
         start_time: newEvent.start_time ? new Date(newEvent.start_time).toISOString() : null,
         end_time: newEvent.end_time ? new Date(newEvent.end_time).toISOString() : null,
@@ -335,6 +340,7 @@ export default function AdminPage() {
           status: '排程準備中',
           event_type: event.event_type,
           location: event.location,
+          image_url: event.image_url || null,
           google_maps_url: googleMapsUrl,
           start_time: event.start_time || null,
           end_time: event.end_time || null,
@@ -1610,6 +1616,47 @@ export default function AdminPage() {
                     </select>
                   </div>
 
+                  {/* 🌟 活動圖片網址 (Image URL) 與即時預覽 */}
+                  <div className="sm:col-span-2 bg-pink-50/40 p-3.5 rounded-xl border border-pink-100">
+                    <label className="block text-xs font-bold text-pink-950 mb-1 flex items-center justify-between">
+                      <span className="flex items-center gap-1.5">
+                        <ImageIcon className="w-3.5 h-3.5 text-pink-600" />
+                        <span>活動圖片網址 (Image URL)</span>
+                      </span>
+                      <span className="text-[10px] text-pink-600/70 font-normal">支援 AniList / Unsplash / Google 圖床</span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="請輸入圖片網址 / 外部圖片 CDN 連結 (例: https://images.unsplash.com/...)"
+                      value={newEvent.image_url}
+                      onChange={(e) => setNewEvent({ ...newEvent, image_url: e.target.value })}
+                      className="w-full bg-white border border-pink-200 rounded-xl px-3 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-pink-500 font-mono"
+                    />
+                    {/* 即時預覽 */}
+                    {newEvent.image_url && (
+                      <div className="mt-2.5 p-2 bg-white/90 rounded-xl border border-pink-200 flex items-center gap-3 shadow-2xs">
+                        <div className="relative w-16 h-12 rounded-lg overflow-hidden bg-slate-100 shrink-0 border border-slate-200">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={newEvent.image_url}
+                            alt="活動海報預覽"
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              (e.target as HTMLElement).style.display = 'none';
+                            }}
+                          />
+                        </div>
+                        <div className="min-w-0 text-xs">
+                          <p className="font-bold text-slate-800 flex items-center gap-1">
+                            <Sparkles className="w-3 h-3 text-pink-500" />
+                            <span>海報即時預覽</span>
+                          </p>
+                          <p className="text-[10px] text-slate-400 truncate font-mono mt-0.5">{newEvent.image_url}</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   {/* 🌟 活動起訖時間區間設定 (Start Time & End Time) */}
                   <div className="bg-purple-50/50 p-3.5 rounded-xl border border-purple-100">
                     <label className="block text-xs font-bold text-purple-950 mb-1 flex items-center gap-1.5">
@@ -1696,15 +1743,32 @@ export default function AdminPage() {
                 {eventsList.map((event) => (
                   <div
                     key={event.id}
-                    className={`border rounded-2xl overflow-hidden hover:shadow-lg transition-all bg-white flex flex-col ${
+                    className={`border rounded-2xl overflow-hidden hover:shadow-lg transition-all bg-white flex flex-col group ${
                       editingEventId === event.id ? 'border-pink-500 ring-2 ring-pink-500/20 shadow-md' : 'border-slate-200'
                     }`}
                   >
                     <div className="h-44 bg-slate-800 relative flex items-center justify-center overflow-hidden">
-                      <div className="absolute inset-0 bg-gradient-to-br from-slate-800 to-slate-950" />
-                      <span className="relative z-10 text-3xl font-black text-white/40 tracking-widest">
-                        OshiPulse
-                      </span>
+                      {event.image_url ? (
+                        <>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={event.image_url}
+                            alt={event.title}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                            onError={(e) => {
+                              (e.target as HTMLElement).style.display = 'none';
+                            }}
+                          />
+                          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/70 via-slate-950/20 to-transparent" />
+                        </>
+                      ) : (
+                        <>
+                          <div className="absolute inset-0 bg-gradient-to-br from-slate-800 to-slate-950" />
+                          <span className="relative z-10 text-3xl font-black text-white/40 tracking-widest">
+                            OshiPulse
+                          </span>
+                        </>
+                      )}
                       <div className="absolute top-4 left-4 flex gap-2 z-20">
                         <span className={`text-xs font-extrabold px-2.5 py-1 rounded-full ${
                           event.status === '上架展示中'

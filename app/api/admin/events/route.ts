@@ -28,7 +28,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { title, description, status, event_type, location, google_maps_url, start_time, end_time } = body;
+    const { title, description, status, event_type, location, image_url, google_maps_url, start_time, end_time } = body;
 
     if (!title) {
       return NextResponse.json({ success: false, message: "活動標題為必填" }, { status: 400 });
@@ -40,6 +40,7 @@ export async function POST(request: Request) {
       status: status || "上架展示中",
       event_type: event_type || "線下實體展",
       location: location || "",
+      image_url: image_url ? image_url.trim() : null,
       google_maps_url: google_maps_url || null,
       start_time: start_time ? new Date(start_time).toISOString() : null,
       end_time: end_time ? new Date(end_time).toISOString() : null,
@@ -52,12 +53,13 @@ export async function POST(request: Request) {
       .insert([insertPayload])
       .select();
 
-    // 防呆相容：若資料庫尚未補齊 start_time/end_time 欄位導致報錯，進行降級寫入
-    if (error && (error.code === "PGRST204" || error.message.includes("start_time") || error.message.includes("end_time"))) {
-      console.warn("Supabase events 資料表尚未包含 start_time/end_time 欄位，進行降級寫入...");
+    // 防呆相容：若資料庫尚未補齊欄位導致報錯，進行降級寫入
+    if (error && (error.code === "PGRST204" || error.message.includes("start_time") || error.message.includes("end_time") || error.message.includes("image_url"))) {
+      console.warn("Supabase events 資料表欄位缺失，進行降級寫入...");
       const fallbackPayload = { ...insertPayload };
-      delete fallbackPayload.start_time;
-      delete fallbackPayload.end_time;
+      if (error.message.includes("start_time")) delete fallbackPayload.start_time;
+      if (error.message.includes("end_time")) delete fallbackPayload.end_time;
+      if (error.message.includes("image_url")) delete fallbackPayload.image_url;
       const retry = await supabaseAdmin.from("events").insert([fallbackPayload]).select();
       data = retry.data;
       error = retry.error;
@@ -77,7 +79,7 @@ export async function POST(request: Request) {
 export async function PUT(request: Request) {
   try {
     const body = await request.json();
-    const { id, title, description, status, event_type, location, google_maps_url, start_time, end_time } = body;
+    const { id, title, description, status, event_type, location, image_url, google_maps_url, start_time, end_time } = body;
 
     if (!id) {
       return NextResponse.json({ success: false, message: "缺少活動 ID" }, { status: 400 });
@@ -93,6 +95,7 @@ export async function PUT(request: Request) {
       status: status || "上架展示中",
       event_type: event_type || "線下實體展",
       location: location || "",
+      image_url: image_url ? image_url.trim() : null,
       google_maps_url: google_maps_url || null,
       start_time: start_time ? new Date(start_time).toISOString() : null,
       end_time: end_time ? new Date(end_time).toISOString() : null,
@@ -106,12 +109,13 @@ export async function PUT(request: Request) {
       .eq("id", id)
       .select();
 
-    // 防呆相容：若資料庫尚未補齊 start_time/end_time 欄位導致報錯，降級排除後更新
-    if (error && (error.code === "PGRST204" || error.message.includes("start_time") || error.message.includes("end_time"))) {
-      console.warn("Supabase events 資料表尚未包含 start_time/end_time 欄位，進行降級更新...");
+    // 防呆相容：若資料庫尚未補齊欄位導致報錯，降級排除後更新
+    if (error && (error.code === "PGRST204" || error.message.includes("start_time") || error.message.includes("end_time") || error.message.includes("image_url"))) {
+      console.warn("Supabase events 資料表欄位缺失，進行降級更新...");
       const fallbackPayload = { ...updatePayload };
-      delete fallbackPayload.start_time;
-      delete fallbackPayload.end_time;
+      if (error.message.includes("start_time")) delete fallbackPayload.start_time;
+      if (error.message.includes("end_time")) delete fallbackPayload.end_time;
+      if (error.message.includes("image_url")) delete fallbackPayload.image_url;
       const retry = await supabaseAdmin.from("events").update(fallbackPayload).eq("id", id).select();
       data = retry.data;
       error = retry.error;

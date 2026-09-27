@@ -47,13 +47,15 @@ CREATE TABLE IF NOT EXISTS public.events (
   event_type TEXT DEFAULT '線下實體展',
   location TEXT,
   google_maps_url TEXT,
+  image_url TEXT,
   start_time TIMESTAMPTZ,
   end_time TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()),
   updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now())
 );
 
--- 安全補齊 start_time 與 end_time 欄位（相容既有資料庫）
+-- 安全補齊 image_url、start_time 與 end_time 欄位（相容既有資料庫）
+ALTER TABLE public.events ADD COLUMN IF NOT EXISTS image_url TEXT;
 ALTER TABLE public.events ADD COLUMN IF NOT EXISTS start_time TIMESTAMPTZ;
 ALTER TABLE public.events ADD COLUMN IF NOT EXISTS end_time TIMESTAMPTZ;
 
