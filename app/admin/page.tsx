@@ -99,6 +99,9 @@ export default function AdminPage() {
   const [orderFilter, setOrderFilter] = useState<'all' | 'pending' | 'shipped' | 'cancelled'>('all')
   const [editingOrder, setEditingOrder] = useState<any>(null)
   const [isSavingOrder, setIsSavingOrder] = useState(false)
+  const [inventoryList, setInventoryList] = useState<any[]>([])
+  const [editingInventory, setEditingInventory] = useState<any>(null)
+  const [isSavingInventory, setIsSavingInventory] = useState(false)
 
   // ==========================================
   // 6. messages (粉絲諮詢與郵件回覆)
@@ -131,7 +134,10 @@ export default function AdminPage() {
       fetchCollabs()
       fetchMembers() // 供抽獎使用
     }
-    if (activeTab === 'store') fetchOrders()
+    if (activeTab === 'store') {
+      fetchOrders()
+      fetchInventory()
+    }
     if (activeTab === 'messages') fetchMessages()
     if (activeTab === 'members') fetchMembers()
   }, [activeTab])
@@ -1004,6 +1010,94 @@ export default function AdminPage() {
       setIsDrawing(false)
       setMessage(`🎉 已成功從真實註冊會員庫抽出 ${selected.length} 名【${drawActivity}】幸運得主！`)
     }, 800)
+  }
+
+  // 5.1. 商城周邊庫存與商品管理
+  async function fetchInventory() {
+    try {
+      const res = await fetch(`/api/admin/inventory?t=${Date.now()}`)
+      const json = await res.json()
+      if (json.success && Array.isArray(json.data)) {
+        setInventoryList(json.data)
+      }
+    } catch (e) {
+      console.error('抓取商品庫存失敗:', e)
+    }
+  }
+
+  async function handleSaveInventory(e: React.FormEvent) {
+    e.preventDefault()
+    if (!editingInventory) return
+    setIsSavingInventory(true)
+    try {
+      const isNew = Boolean(editingInventory.isNew)
+      const url = '/api/admin/inventory'
+      const method = isNew ? 'POST' : 'PUT'
+      const payload = {
+        id: editingInventory.id,
+        title: editingInventory.title,
+        description: editingInventory.description,
+        price: Number(editingInventory.price) || 0,
+        stock: Number(editingInventory.stock) || 0,
+        min_votes_to_buy: Number(editingInventory.min_votes_to_buy) || 0,
+        source_type: editingInventory.source_type || 'collab_exclusive',
+        image_url: editingInventory.image_url,
+      }
+
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const json = await res.json()
+      if (!json.success) {
+        throw new Error(json.message || '無法儲存商品資訊')
+      }
+
+      setMessage(`✅ 商品【${payload.title}】售價與庫存已成功同步至資料庫！`)
+      setEditingInventory(null)
+      fetchInventory()
+    } catch (err: any) {
+      console.error('儲存商品庫存失敗:', err)
+      alert(`❌ 儲存商品失敗：${err.message}`)
+    } finally {
+      setIsSavingInventory(false)
+    }
+  }
+
+  async function handleQuickAddStock(id: string, amount: number) {
+    try {
+      const item = inventoryList.find((p) => p.id === id)
+      if (!item) return
+      const nextStock = Number(item.stock || 0) + amount
+      const res = await fetch('/api/admin/inventory', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, stock: nextStock }),
+      })
+      const json = await res.json()
+      if (json.success) {
+        setMessage(`📦 商品【${item.title}】已成功補貨 +${amount} 件，目前庫存：${nextStock} 件！`)
+        fetchInventory()
+      }
+    } catch (err: any) {
+      console.error('快速補貨失敗:', err)
+    }
+  }
+
+  async function handleDeleteInventory(id: string, title: string) {
+    if (!confirm(`⚠️ 確定要從商城資料庫徹底刪除商品【${title}】(ID: ${id}) 嗎？此操作不可復原！`)) return
+    try {
+      const res = await fetch(`/api/admin/inventory?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
+      const json = await res.json()
+      if (json.success) {
+        setMessage(`🗑️ 商品 #${id} 已成功刪除！`)
+        fetchInventory()
+      }
+    } catch (err: any) {
+      console.error('刪除商品失敗:', err)
+      alert(`❌ 刪除商品失敗：${err.message}`)
+    }
   }
 
   // 5. 商城訂單
@@ -3603,6 +3697,310 @@ export default function AdminPage() {
                           <>
                             <CheckCircle2 className="w-3.5 h-3.5" />
                             <span>儲存並同步至資料庫</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+            {/* ========================================================
+                5.1. 商城周邊商品與即時庫存管理 (Shop Inventory)
+            ======================================================== */}
+            <div className="mt-8 pt-8 border-t border-slate-200 space-y-6">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div>
+                  <h3 className="text-xl sm:text-2xl font-black text-slate-900 flex items-center gap-2">
+                    <Package className="w-6 h-6 text-pink-600" />
+                    🛍️ 商城周邊商品與即時庫存管理 (Shop Inventory)
+                  </h3>
+                  <p className="text-sm text-slate-500 mt-0.5">
+                    直連 Supabase shop_inventory 資料庫。可隨時調整售價與剩餘庫存件數，前台首頁推薦與商城專區將即刻同步呈現！
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setEditingInventory({
+                      isNew: true,
+                      title: '',
+                      description: '',
+                      price: 980,
+                      stock: 100,
+                      min_votes_to_buy: 0,
+                      source_type: 'collab_exclusive',
+                      image_url: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=600',
+                    })
+                  }
+                  className="px-4 py-2 bg-gradient-to-r from-pink-500 to-rose-600 hover:from-pink-600 hover:to-rose-700 text-white font-bold text-xs rounded-xl shadow transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>新增周邊商品</span>
+                </button>
+              </div>
+
+              {/* 庫存商品卡片列表 */}
+              {inventoryList.length === 0 ? (
+                <div className="text-center py-12 bg-slate-50 border border-dashed border-slate-200 rounded-2xl text-slate-400 text-sm">
+                  目前資料庫中尚未建立商品庫存。
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {inventoryList.map((item) => {
+                    const isLowStock = Number(item.stock || 0) <= 20
+                    const isOutOfStock = Number(item.stock || 0) <= 0
+
+                    return (
+                      <div
+                        key={item.id}
+                        className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between space-y-4 group"
+                      >
+                        <div className="space-y-3">
+                          <div className="relative w-full aspect-[16/10] rounded-xl overflow-hidden bg-slate-100 border border-slate-100">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={item.image_url || 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=600'}
+                              alt={item.title}
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                            />
+                            <div className="absolute top-2 left-2 flex items-center gap-1.5">
+                              <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-slate-900/90 backdrop-blur-xs text-white">
+                                {item.source_type === 'collab_exclusive' ? '聯名限定' : '官方正版'}
+                              </span>
+                              {isOutOfStock ? (
+                                <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-rose-600 text-white animate-pulse">
+                                  售罄
+                                </span>
+                              ) : isLowStock ? (
+                                <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-amber-500 text-white">
+                                  庫存吃緊
+                                </span>
+                              ) : null}
+                            </div>
+                            <div className="absolute bottom-2 right-2 bg-white/95 backdrop-blur-xs px-2.5 py-1 rounded-lg text-xs font-mono font-black text-rose-600 shadow-sm">
+                              NT$ {Number(item.price || 0).toLocaleString()}
+                            </div>
+                          </div>
+
+                          <div>
+                            <div className="flex items-center justify-between text-xs text-slate-400 mb-1">
+                              <span className="font-mono">ID: {item.id}</span>
+                              <span>
+                                {item.min_votes_to_buy > 0 ? `滿 ${item.min_votes_to_buy} 票可解鎖` : '免門檻開放'}
+                              </span>
+                            </div>
+                            <h4 className="font-black text-slate-900 text-sm leading-snug line-clamp-2">
+                              {item.title}
+                            </h4>
+                            <p className="text-xs text-slate-500 line-clamp-2 mt-1">
+                              {item.description || '無詳細說明'}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="space-y-3 pt-3 border-t border-slate-100">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-slate-500">即時庫存剩餘：</span>
+                            <span
+                              className={`text-sm font-mono font-black ${
+                                isOutOfStock
+                                  ? 'text-rose-600'
+                                  : isLowStock
+                                  ? 'text-amber-600'
+                                  : 'text-slate-900'
+                              }`}
+                            >
+                              {item.stock} 件
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleQuickAddStock(item.id, 50)}
+                              className="flex-1 py-1.5 px-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition cursor-pointer"
+                              title="一鍵補貨 50 件並即時寫入資料庫"
+                            >
+                              +50 補貨
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingInventory({ ...item })}
+                              className="px-3 py-1.5 bg-pink-50 hover:bg-pink-100 text-pink-700 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                            >
+                              <Edit className="w-3.5 h-3.5" />
+                              <span>編輯售價/庫存</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteInventory(item.id, item.title)}
+                              className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg border border-rose-200 transition cursor-pointer"
+                              title="自資料庫刪除此商品"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* 商品編輯 / 新增 Modal */}
+            {editingInventory && (
+              <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+                <div
+                  className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-lg my-8 overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in zoom-in-95 duration-200"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/90 shrink-0">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-9 h-9 rounded-xl bg-pink-100 text-pink-600 flex items-center justify-center font-bold">
+                        {editingInventory.isNew ? <Plus className="w-5 h-5" /> : <Edit className="w-5 h-5" />}
+                      </div>
+                      <div>
+                        <h3 className="text-base font-black text-slate-900">
+                          {editingInventory.isNew ? '新增周邊商品' : '編輯商品售價與庫存'}
+                        </h3>
+                        <p className="text-xs text-slate-400">
+                          {editingInventory.isNew ? '將直接寫入 Supabase shop_inventory 資料表' : `商品序號 ID: ${editingInventory.id}`}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setEditingInventory(null)}
+                      className="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  <form onSubmit={handleSaveInventory} className="flex-1 overflow-y-auto p-6 space-y-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        商品名稱 (Title) <span className="text-rose-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={editingInventory.title || ''}
+                        onChange={(e) => setEditingInventory({ ...editingInventory, title: e.target.value })}
+                        placeholder="例如：【聯名限定】星街彗星 2026 璀璨彗星應援互動手燈"
+                        className="block w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm focus:border-pink-500 bg-white"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          商品售價 NT$ (Price) <span className="text-rose-500">*</span>
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          required
+                          value={editingInventory.price ?? 980}
+                          onChange={(e) => setEditingInventory({ ...editingInventory, price: Number(e.target.value) })}
+                          className="block w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm font-mono focus:border-pink-500 bg-white"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          庫存剩餘數量 (Stock) <span className="text-rose-500">*</span>
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          required
+                          value={editingInventory.stock ?? 120}
+                          onChange={(e) => setEditingInventory({ ...editingInventory, stock: Number(e.target.value) })}
+                          className="block w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm font-mono focus:border-pink-500 bg-white"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          解鎖門檻票數 (Votes)
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={editingInventory.min_votes_to_buy ?? 0}
+                          onChange={(e) => setEditingInventory({ ...editingInventory, min_votes_to_buy: Number(e.target.value) })}
+                          className="block w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm font-mono focus:border-pink-500 bg-white"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          商品類型 (Type)
+                        </label>
+                        <select
+                          value={editingInventory.source_type || 'collab_exclusive'}
+                          onChange={(e) => setEditingInventory({ ...editingInventory, source_type: e.target.value })}
+                          className="block w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm focus:border-pink-500 bg-white"
+                        >
+                          <option value="collab_exclusive">聯名限定特企</option>
+                          <option value="official_regular">官方常態正版</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        商品宣傳圖片網址 (Image URL)
+                      </label>
+                      <input
+                        type="url"
+                        value={editingInventory.image_url || ''}
+                        onChange={(e) => setEditingInventory({ ...editingInventory, image_url: e.target.value })}
+                        placeholder="https://..."
+                        className="block w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm font-mono focus:border-pink-500 bg-white"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        商品描述文案 (Description)
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={editingInventory.description || ''}
+                        onChange={(e) => setEditingInventory({ ...editingInventory, description: e.target.value })}
+                        placeholder="請輸入商品詳細特色、尺寸與包裝說明..."
+                        className="block w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm focus:border-pink-500 bg-white"
+                      />
+                    </div>
+
+                    <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setEditingInventory(null)}
+                        className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 bg-white border border-slate-300 hover:bg-slate-50 transition cursor-pointer"
+                      >
+                        取消
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isSavingInventory}
+                        className="px-5 py-2 rounded-xl text-xs font-bold text-white bg-pink-600 hover:bg-pink-700 shadow-md transition cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+                      >
+                        {isSavingInventory ? (
+                          <>
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            <span>儲存中...</span>
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>{editingInventory.isNew ? '確認新增商品' : '儲存售價與庫存'}</span>
                           </>
                         )}
                       </button>

@@ -43,14 +43,16 @@ export default function HomePage() {
   const [selectedFilter, setSelectedFilter] = useState<string>("ALL");
   const [dbIdols, setDbIdols] = useState<any[]>([]);
   const [dbPledge, setDbPledge] = useState<any>(null);
+  const [dbFeaturedProduct, setDbFeaturedProduct] = useState<any>(null);
 
-  // 🛡️ 即時同步：首頁載入時向 API 取得最新真實角色與應援許願池
+  // 🛡️ 即時同步：首頁載入時向 API 取得最新真實角色、應援許願池與商城推薦庫存
   useEffect(() => {
     async function loadLatestData() {
       try {
-        const [idolsRes, pledgesRes] = await Promise.all([
+        const [idolsRes, pledgesRes, inventoryRes] = await Promise.all([
           fetch(`/api/admin/idols?t=${Date.now()}`),
           fetch(`/api/admin/pledges?t=${Date.now()}`),
+          fetch(`/api/admin/inventory?t=${Date.now()}`),
         ]);
         
         const idolsJson = await idolsRes.json();
@@ -62,8 +64,19 @@ export default function HomePage() {
         if (pledgesJson.success) {
           if (pledgesJson.active) {
             setDbPledge(pledgesJson.active);
+          } else if (pledgesJson.pledge) {
+            setDbPledge(pledgesJson.pledge);
           } else if (Array.isArray(pledgesJson.data) && pledgesJson.data.length > 0) {
             setDbPledge(pledgesJson.data[0]);
+          }
+        }
+
+        const inventoryJson = await inventoryRes.json();
+        if (inventoryJson.success) {
+          if (inventoryJson.featured) {
+            setDbFeaturedProduct(inventoryJson.featured);
+          } else if (Array.isArray(inventoryJson.data) && inventoryJson.data.length > 0) {
+            setDbFeaturedProduct(inventoryJson.data[0]);
           }
         }
       } catch (err) {
@@ -149,6 +162,31 @@ export default function HomePage() {
     }
     return null;
   }, [dbPledge, featuredCollab]);
+
+  // 🛡️ 商城周邊推薦：優先使用資料庫中的推薦商品（星街彗星手燈），售價與剩餘庫存完全同步
+  const displayProduct = useMemo(() => {
+    if (dbFeaturedProduct) {
+      return {
+        id: dbFeaturedProduct.id,
+        title: dbFeaturedProduct.title,
+        price: Number(dbFeaturedProduct.price || 980),
+        stock: Number(dbFeaturedProduct.stock || 120),
+        min_votes_to_buy: Number(dbFeaturedProduct.min_votes_to_buy || 0),
+        image: dbFeaturedProduct.image_url || "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=600",
+      };
+    }
+    if (featuredProduct) {
+      return {
+        id: featuredProduct.id,
+        title: featuredProduct.title,
+        price: featuredProduct.price,
+        stock: featuredProduct.stock,
+        min_votes_to_buy: featuredProduct.min_votes_to_buy,
+        image: featuredProduct.images[0],
+      };
+    }
+    return null;
+  }, [dbFeaturedProduct, featuredProduct]);
 
   const filterTabs = [
     { code: "ALL", name: "全部本命與角色" },
@@ -434,14 +472,14 @@ export default function HomePage() {
           </div>
         )}
 
-        {/* 卡片 4: 官方限量周邊特企 */}
-        {featuredProduct && (
+        {/* 卡片 4: 官方限量周邊特企（連動商城庫存 shop_inventory） */}
+        {displayProduct && (
           <div className="bento-card col-span-1 md:col-span-1 lg:col-span-2 p-6 flex flex-col justify-between">
             <div className="flex gap-4">
               <div className="relative w-28 h-28 rounded-2xl overflow-hidden bg-slate-100 shrink-0 border border-slate-200">
                 <SafeImage
-                  src={featuredProduct.images[0]}
-                  alt={featuredProduct.title}
+                  src={displayProduct.image}
+                  alt={displayProduct.title}
                   fill
                   className="object-cover"
                   unoptimized
@@ -452,18 +490,18 @@ export default function HomePage() {
               </div>
               <div className="flex-1 min-w-0">
                 <span className="text-xs font-bold text-cyber-violet">
-                  {featuredProduct.min_votes_to_buy > 0
-                    ? `應援滿 ${featuredProduct.min_votes_to_buy} 票可購買`
+                  {displayProduct.min_votes_to_buy > 0
+                    ? `應援滿 ${displayProduct.min_votes_to_buy} 票可購買`
                     : "免門檻開放預購"}
                 </span>
                 <h4 className="text-base font-black text-slate-900 line-clamp-2 mt-0.5 mb-1">
-                  {featuredProduct.title}
+                  {displayProduct.title}
                 </h4>
                 <div className="text-lg font-mono font-black text-cyber-rose">
-                  {formatCurrency(featuredProduct.price)}
+                  {formatCurrency(displayProduct.price)}
                 </div>
                 <p className="text-[11px] text-slate-500 line-clamp-1 mt-1">
-                  庫存剩餘 {featuredProduct.stock} 件 · 正品授權
+                  庫存剩餘 {displayProduct.stock} 件 · 正品授權
                 </p>
               </div>
             </div>

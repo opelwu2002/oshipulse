@@ -198,6 +198,28 @@ DROP POLICY IF EXISTS "Orders full access" ON public.orders;
 CREATE POLICY "Orders full access" ON public.orders FOR ALL USING (true) WITH CHECK (true);
 
 -- ------------------------------------------------------------------------------
+-- 7.1. 商城周邊庫存與商品管理 (shop_inventory)
+-- ------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.shop_inventory (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  description TEXT,
+  price NUMERIC NOT NULL,
+  stock INT DEFAULT 0,
+  image_url TEXT,
+  min_votes_to_buy INT DEFAULT 0,
+  source_type TEXT DEFAULT 'collab_exclusive',
+  idol_id TEXT,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()),
+  updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now())
+);
+
+ALTER TABLE public.shop_inventory ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Shop inventory full access" ON public.shop_inventory;
+CREATE POLICY "Shop inventory full access" ON public.shop_inventory FOR ALL USING (true) WITH CHECK (true);
+
+-- ------------------------------------------------------------------------------
 -- 8. 粉絲諮詢與客服郵件 (messages)
 -- ------------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.messages (
@@ -260,6 +282,7 @@ ON CONFLICT DO NOTHING;
 -- 4.1. 首頁應援許願池初始資料
 INSERT INTO public.pledge_wishes (title, description, image_url, current_votes, target_votes, status)
 VALUES
+  ('【生誕祭特企】星街彗星 2026 璀璨彗星 3D 全息投影連署', '凝聚星詠者的璀璨星光！集氣達標 15,000 票，將在台北信義威秀商圈打造為期兩週的 3D 裸視巨型戶外應援，並解鎖限定特典！', 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=1200', 9850, 15000, 'active'),
   ('台北捷運全線燈箱應援企劃 · 五條悟領域展開 2026', '最強咒術師五條悟全線佔領！集氣滿額即解鎖台北捷運忠孝復興與台北車站巨型光箱廣告。', 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=1200', 7850, 10000, 'active')
 ON CONFLICT DO NOTHING;
 
@@ -270,6 +293,15 @@ VALUES
   ('ORD-2026-8802', '黃維琪', '0955-678-901', '【官方授權】張員瑛 IVE 專屬 Lucky Vicky 幸運壓克力立牌應援套組', 850, 'pending'),
   ('ORD-2026-8799', '張無限', '0923-456-789', '【應援特展】五條悟「無量空處」沉浸式領域展開展 早鳥門票 x 2', 1200, 'shipped'),
   ('ORD-2026-8795', '陳語婕', '0934-567-890', '【限定周邊】BTS 田柾國《GOLDEN》線下紀念手幅與鐳射徽章組', 690, 'shipped')
+ON CONFLICT (id) DO NOTHING;
+
+-- 5.1. 商城周邊商品與庫存初始資料 (shop_inventory)
+INSERT INTO public.shop_inventory (id, title, description, price, stock, image_url, min_votes_to_buy, source_type, idol_id, is_active)
+VALUES
+  ('prod-1', '【聯名限定】星街彗星 2026 璀璨彗星應援互動手燈', '內建 RGB 聲光同步晶片，支援現場舞台無線連動，粉絲專屬雷雕編號。', 980, 120, 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=600', 3, 'collab_exclusive', 'idol-1', true),
+  ('prod-2', '【聯名限定】NewJeans Bunnies 復古卡帶藍牙音響組', '結合 Y2K 復古設計與高解析立體聲，隨附成員專屬寫真概念透卡一套。', 1880, 45, 'https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=600', 5, 'collab_exclusive', 'idol-3', true),
+  ('prod-3', '【官方周邊】周杰倫 嘉年華巡迴經典紀念連帽衫', '重磅純棉高質感刺繡，經典音符標誌低調奢華，百搭應援必備款。', 1580, 80, 'https://images.unsplash.com/photo-1556905055-8f358a7a47b2?w=600', 0, 'official_regular', 'idol-2', true),
+  ('prod-4', '【官方周邊】Taylor Swift The Eras 典藏手繪吉他撥片組', '收錄各大時代巡演視覺圖案，精裝燙金鐵盒收藏組。', 650, 150, 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600', 0, 'official_regular', 'idol-4', true)
 ON CONFLICT (id) DO NOTHING;
 
 -- 6. 粉絲諮詢初始資料
