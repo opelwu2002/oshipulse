@@ -66,7 +66,9 @@ export default function AdminPage() {
   // ==========================================
   // 3. battles (賽季對決與防弊審計)
   // ==========================================
-  const [battleData, setBattleData] = useState<any>(null)
+  const [battlesList, setBattlesList] = useState<any[]>([])
+  const [editingBattle, setEditingBattle] = useState<any>(null)
+  const [isSavingBattle, setIsSavingBattle] = useState(false)
   const [auditLogs, setAuditLogs] = useState<any[]>([])
 
   // ==========================================
@@ -408,15 +410,145 @@ export default function AdminPage() {
   // 3. 對決與日誌
   async function fetchBattles() {
     try {
-      const res = await fetch('/api/admin/battles')
+      // 1. 優先嘗試 Supabase 用戶端直連讀取，防範任何中繼快取
+      const { data: dbData, error: dbError } = await supabase
+        .from('battles')
+        .select('*')
+        .order('id', { ascending: false })
+
+      if (!dbError && dbData && dbData.length > 0) {
+        setBattlesList(dbData)
+        return
+      }
+
+      // 2. 備援管理員 API 讀取
+      const res = await fetch(`/api/admin/battles?t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate' },
+      })
       const json = await res.json()
       if (json.tableMissing) {
         setTableMissingWarning('battles')
       } else if (json.success) {
-        setBattleData(json.battle)
+        setBattlesList(json.battles || (json.battle ? [json.battle] : []))
       }
     } catch (e) {
-      console.error(e)
+      console.error('抓取對決資料失敗:', e)
+    }
+  }
+
+  function handleNewBattle() {
+    setEditingBattle({
+      isNew: true,
+      title: '2026 跨界巔峰對決冠軍賽',
+      season_name: 'Season 2 決戰之巔',
+      status: 'live',
+      red_name: '成振宇 (Sung Jinwoo)',
+      red_avatar: 'https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx105398-b673VtlCXHQT.jpg',
+      red_votes: 125000,
+      blue_name: '五條悟 (Satoru Gojo)',
+      blue_avatar: 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx113415-bbBWj4pEFseh.jpg',
+      blue_votes: 118000,
+    })
+  }
+
+  async function handleSaveBattle(e: React.FormEvent) {
+    e.preventDefault()
+    if (!editingBattle) return
+    setIsSavingBattle(true)
+    setMessage('')
+
+    try {
+      const payload: any = {
+        title: (editingBattle.title || '').trim(),
+        season_name: (editingBattle.season_name || '2026 跨界巔峰對決').trim(),
+        red_name: (editingBattle.red_name || '').trim(),
+        red_avatar: (editingBattle.red_avatar || '').trim(),
+        red_votes: Number(editingBattle.red_votes) || 0,
+        blue_name: (editingBattle.blue_name || '').trim(),
+        blue_avatar: (editingBattle.blue_avatar || '').trim(),
+        blue_votes: Number(editingBattle.blue_votes) || 0,
+        status: editingBattle.status || 'live',
+      }
+
+      if (!editingBattle.isNew) {
+        payload.id = editingBattle.id
+      }
+
+      let success = false
+      let errorMsg = ''
+
+      // 1. 雙重執行真實寫入：優先透過管理員 API (service_role)，確保無 RLS 權限障礙
+      const method = editingBattle.isNew ? 'POST' : 'PUT'
+      const res = await fetch(`/api/admin/battles?t=${Date.now()}`, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const json = await res.json()
+
+      if (json.success) {
+        success = true
+      } else {
+        errorMsg = json.message || '寫入失敗'
+        // 嘗試備援 Supabase 用戶端直連
+        if (editingBattle.isNew) {
+          const { error: insertErr } = await supabase.from('battles').insert([payload])
+          if (!insertErr) success = true
+        } else {
+          const { error: updateErr } = await supabase.from('battles').update(payload).eq('id', payload.id)
+          if (!updateErr) success = true
+        }
+      }
+
+      if (!success) {
+        throw new Error(errorMsg || '無法寫入資料庫')
+      }
+
+      setMessage(
+        editingBattle.isNew
+          ? `🎉 巔峰對決【${payload.title}】已成功新增並寫入 Supabase 資料庫！`
+          : `✅ 巔峰對決【${payload.title}】資料已成功同步更新至 Supabase 資料庫！`
+      )
+      setEditingBattle(null)
+      await fetchBattles()
+    } catch (err: any) {
+      console.error('儲存對決項目失敗:', err)
+      alert(`❌ 儲存失敗：${err.message}`)
+      setMessage(`❌ 儲存對決失敗：${err.message}`)
+    } finally {
+      setIsSavingBattle(false)
+    }
+  }
+
+  async function handleDeleteBattle(id: number | string, title: string) {
+    if (!confirm(`⚠️ 確定要從資料庫徹底刪除對決項目【${title}】(ID: #${id}) 嗎？此操作不可復原！`)) return
+
+    try {
+      const res = await fetch(`/api/admin/battles?id=${id}`, {
+        method: 'DELETE',
+      })
+      const json = await res.json()
+
+      if (json.success) {
+        setMessage(`🗑️ 對決項目 #${id} 已成功從資料庫刪除！`)
+        // 樂觀過濾
+        setBattlesList((prev) => prev.filter((b) => b.id !== id))
+        fetchBattles()
+      } else {
+        // 嘗試 Supabase 用戶端直連刪除
+        const { error: delErr } = await supabase.from('battles').delete().eq('id', id)
+        if (!delErr) {
+          setMessage(`🗑️ 對決項目 #${id} 已成功從資料庫刪除！`)
+          setBattlesList((prev) => prev.filter((b) => b.id !== id))
+          fetchBattles()
+        } else {
+          throw new Error(json.message || delErr.message)
+        }
+      }
+    } catch (err: any) {
+      console.error('刪除對決項目失敗:', err)
+      alert(`❌ 刪除失敗：${err.message}`)
     }
   }
 
@@ -1449,64 +1581,464 @@ export default function AdminPage() {
         ========================================== */}
         {activeTab === 'battles' && (
           <div className="space-y-8">
-            {/* 擂台現況 */}
+            {/* 擂台現況與對決列表 */}
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 sm:p-8">
-              <h2 className="text-xl sm:text-2xl font-black text-slate-900 mb-2">
-                🏆 賽季 1v1 巔峰對決狀態
-              </h2>
-              <p className="text-sm text-slate-500 mb-6">
-                即時掌控擂台比分與比賽進行狀態，資料直連 Supabase battles 資料庫。
-              </p>
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+                <div>
+                  <h2 className="text-xl sm:text-2xl font-black text-slate-900 mb-1 flex items-center gap-2">
+                    <Flame className="w-6 h-6 text-rose-500 fill-rose-500" />
+                    🏆 賽季 1v1 巔峰對決管理 (CRUD)
+                  </h2>
+                  <p className="text-sm text-slate-500">
+                    即時掌控擂台比分、選手陣容與狀態，資料直連 Supabase battles 資料庫，前台首頁對決擂台將即時動態連動呈現。
+                  </p>
+                </div>
 
-              {battleData ? (
-                <div className="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-2xl p-6 sm:p-8 shadow-xl">
-                  <div className="flex justify-between items-center mb-6">
-                    <span className="text-xs font-black px-3 py-1 bg-pink-500/20 text-pink-300 border border-pink-500/30 rounded-full">
-                      {battleData.season_name}
-                    </span>
-                    <span className="text-xs font-bold px-3 py-1 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded-full">
-                      ● 狀態：{battleData.status}
-                    </span>
+                <div className="flex items-center gap-2.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      fetchBattles()
+                      fetchAuditLogs()
+                    }}
+                    className="p-2.5 rounded-xl border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition cursor-pointer"
+                    title="重新整理資料庫"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleNewBattle}
+                    className="px-4 py-2.5 bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-700 hover:to-purple-700 text-white rounded-xl text-xs sm:text-sm font-bold shadow-md hover:shadow-lg transition-all flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>+ 新增巔峰對決</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* 對決項目列表 */}
+              {battlesList.length === 0 ? (
+                <div className="text-center py-16 bg-slate-50 border border-dashed border-slate-200 rounded-3xl text-slate-500 space-y-4">
+                  <div className="w-14 h-14 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
+                    <Flame className="w-7 h-7" />
                   </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 items-center">
-                    {/* 紅方 */}
-                    <div className="text-center p-4 bg-rose-500/10 rounded-2xl border border-rose-500/20">
-                      <div className="w-16 h-16 rounded-full overflow-hidden mx-auto mb-2 border-2 border-rose-500">
-                        <SmartAvatar
-                          src={battleData.red_avatar || 'https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx105398-b673VtlCXHQT.jpg'}
-                          alt={battleData.red_name}
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                      <h4 className="font-bold text-base text-rose-300">{battleData.red_name}</h4>
-                      <p className="text-2xl font-black text-white mt-1">
-                        {(battleData.red_votes || 0).toLocaleString()} 票
-                      </p>
-                    </div>
-
-                    {/* 藍方 */}
-                    <div className="text-center p-4 bg-blue-500/10 rounded-2xl border border-blue-500/20">
-                      <div className="w-16 h-16 rounded-full overflow-hidden mx-auto mb-2 border-2 border-blue-500">
-                        <SmartAvatar
-                          src={battleData.blue_avatar || 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx113415-bbBWj4pEFseh.jpg'}
-                          alt={battleData.blue_name}
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                      <h4 className="font-bold text-base text-blue-300">{battleData.blue_name}</h4>
-                      <p className="text-2xl font-black text-white mt-1">
-                        {(battleData.blue_votes || 0).toLocaleString()} 票
-                      </p>
-                    </div>
+                  <div>
+                    <h3 className="text-base font-bold text-slate-800">目前資料庫中尚無賽季對決項目</h3>
+                    <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
+                      您可以點擊下方按鈕建立第一檔對決，設定雙方選手立繪與初始票數，將即刻同步至前台首頁擂台！
+                    </p>
                   </div>
+                  <button
+                    type="button"
+                    onClick={handleNewBattle}
+                    className="px-5 py-2.5 bg-pink-600 hover:bg-pink-700 text-white rounded-xl text-xs font-bold shadow-md transition cursor-pointer"
+                  >
+                    立即建立第一場對決
+                  </button>
                 </div>
               ) : (
-                <div className="text-center py-12 bg-slate-50 border border-dashed border-slate-200 rounded-2xl text-slate-400 text-sm">
-                  目前資料庫中尚無進行中賽季對決。請執行 supabase-schema.sql 初始化。
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                  {battlesList.map((battle) => {
+                    const totalVotes = (Number(battle.red_votes) || 0) + (Number(battle.blue_votes) || 0)
+                    const redRatio = totalVotes > 0 ? ((Number(battle.red_votes) || 0) / totalVotes) * 100 : 50
+                    const blueRatio = totalVotes > 0 ? ((Number(battle.blue_votes) || 0) / totalVotes) * 100 : 50
+
+                    return (
+                      <div
+                        key={battle.id}
+                        className="bg-gradient-to-br from-slate-900 via-slate-900 to-slate-800 text-white rounded-3xl p-6 sm:p-7 shadow-xl border border-slate-800 flex flex-col justify-between space-y-6 relative overflow-hidden group hover:border-pink-500/50 transition-all"
+                      >
+                        {/* 頂部賽季與狀態 */}
+                        <div className="flex items-center justify-between gap-2 z-10">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-mono font-bold px-2.5 py-0.5 rounded-full bg-white/10 text-slate-300 border border-white/10">
+                              #{battle.id}
+                            </span>
+                            <span className="text-xs font-black px-3 py-1 bg-pink-500/20 text-pink-300 border border-pink-500/30 rounded-full">
+                              {battle.season_name || '巔峰對決'}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            {battle.status === 'live' ? (
+                              <span className="text-xs font-bold px-3 py-1 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded-full flex items-center gap-1.5 animate-pulse">
+                                <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                                <span>進行中 (LIVE)</span>
+                              </span>
+                            ) : battle.status === 'upcoming' ? (
+                              <span className="text-xs font-bold px-3 py-1 bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-full flex items-center gap-1.5">
+                                <Clock className="w-3 h-3" />
+                                <span>即將開始</span>
+                              </span>
+                            ) : (
+                              <span className="text-xs font-bold px-3 py-1 bg-slate-500/20 text-slate-400 border border-slate-500/30 rounded-full">
+                                已完賽結算
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* 對決標題 */}
+                        <div className="z-10">
+                          <h3 className="text-lg sm:text-xl font-black text-white group-hover:text-pink-300 transition-colors">
+                            {battle.title}
+                          </h3>
+                        </div>
+
+                        {/* 雙雄對抗立繪與即時票數 */}
+                        <div className="grid grid-cols-2 gap-4 sm:gap-6 items-center z-10 bg-slate-950/40 rounded-2xl p-4 sm:p-5 border border-white/5">
+                          {/* 紅方選手 */}
+                          <div className="text-center flex flex-col items-center">
+                            <div className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-full overflow-hidden mb-2.5 border-2 border-rose-500 shadow-lg shadow-rose-500/20 bg-slate-800">
+                              <SmartAvatar
+                                src={battle.red_avatar || 'https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx105398-b673VtlCXHQT.jpg'}
+                                alt={battle.red_name}
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 mb-1">
+                              紅方陣營
+                            </span>
+                            <h4 className="font-bold text-xs sm:text-sm text-white truncate max-w-[130px]">
+                              {battle.red_name}
+                            </h4>
+                            <p className="text-sm sm:text-base font-black text-rose-400 font-mono mt-0.5">
+                              {(Number(battle.red_votes) || 0).toLocaleString()} <span className="text-[10px] font-normal text-slate-400">票</span>
+                            </p>
+                          </div>
+
+                          {/* 藍方選手 */}
+                          <div className="text-center flex flex-col items-center">
+                            <div className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-full overflow-hidden mb-2.5 border-2 border-blue-500 shadow-lg shadow-blue-500/20 bg-slate-800">
+                              <SmartAvatar
+                                src={battle.blue_avatar || 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx113415-bbBWj4pEFseh.jpg'}
+                                alt={battle.blue_name}
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 mb-1">
+                              藍方陣營
+                            </span>
+                            <h4 className="font-bold text-xs sm:text-sm text-white truncate max-w-[130px]">
+                              {battle.blue_name}
+                            </h4>
+                            <p className="text-sm sm:text-base font-black text-blue-400 font-mono mt-0.5">
+                              {(Number(battle.blue_votes) || 0).toLocaleString()} <span className="text-[10px] font-normal text-slate-400">票</span>
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* 聲量拉鋸比例條 */}
+                        <div className="space-y-1.5 z-10">
+                          <div className="flex justify-between text-xs font-mono font-bold">
+                            <span className="text-rose-400">{redRatio.toFixed(1)}%</span>
+                            <span className="text-[11px] text-slate-400 font-medium">即時聲量佔比</span>
+                            <span className="text-blue-400">{blueRatio.toFixed(1)}%</span>
+                          </div>
+                          <div className="w-full bg-slate-800 rounded-full h-2.5 sm:h-3 overflow-hidden flex p-0.5 border border-white/10">
+                            <div
+                              className="bg-gradient-to-r from-rose-500 to-rose-400 h-full rounded-l-full transition-all duration-500"
+                              style={{ width: `${redRatio}%` }}
+                            />
+                            <div className="w-0.5 h-full bg-white z-10" />
+                            <div
+                              className="bg-gradient-to-r from-blue-400 to-blue-500 h-full rounded-r-full transition-all duration-500"
+                              style={{ width: `${blueRatio}%` }}
+                            />
+                          </div>
+                        </div>
+
+                        {/* 底部操作按鈕 */}
+                        <div className="pt-4 border-t border-white/10 flex items-center justify-between z-10">
+                          <span className="text-[11px] text-slate-400">
+                            {battle.status === 'live' ? '🔥 前台首頁將即時呈現本對決' : '未在前台首頁展示'}
+                          </span>
+
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setEditingBattle({ ...battle })}
+                              className="px-3.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition flex items-center gap-1.5 border border-white/10 cursor-pointer"
+                              title="編輯此對決資訊與票數"
+                            >
+                              <Edit className="w-3.5 h-3.5 text-pink-400" />
+                              <span>編輯</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteBattle(battle.id, battle.title)}
+                              className="px-3 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-xs font-bold transition flex items-center gap-1 border border-rose-500/20 cursor-pointer"
+                              title="刪除此對決項目"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>刪除</span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
               )}
             </div>
+
+            {/* ==========================================
+                編輯 / 新增巔峰對決對話框 (Modal)
+            ========================================== */}
+            {editingBattle && (
+              <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+                <div
+                  className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-3xl my-8 overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in zoom-in-95 duration-200"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {/* Modal Header */}
+                  <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/90 shrink-0">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-9 h-9 rounded-xl bg-pink-100 text-pink-600 flex items-center justify-center font-bold">
+                        {editingBattle.isNew ? <Plus className="w-5 h-5" /> : <Edit className="w-5 h-5" />}
+                      </div>
+                      <div>
+                        <h3 className="text-base font-black text-slate-900">
+                          {editingBattle.isNew ? '新增巔峰對決項目' : '編輯巔峰對決資料'}
+                        </h3>
+                        <p className="text-xs text-slate-400">
+                          {editingBattle.isNew
+                            ? '即刻直連寫入 Supabase battles 資料庫，前台將同步呈現'
+                            : `對決序號 ID: #${editingBattle.id}`}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setEditingBattle(null)}
+                      className="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  {/* Modal Form */}
+                  <form onSubmit={handleSaveBattle} className="flex-1 overflow-y-auto p-6 space-y-6">
+                    {/* 基本資訊 */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                      <div className="sm:col-span-2">
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          對決標題 (Title) <span className="text-rose-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={editingBattle.title || ''}
+                          onChange={(e) => setEditingBattle({ ...editingBattle, title: e.target.value })}
+                          placeholder="例如：2026 第一季巔峰拔河冠軍賽"
+                          className="block w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm focus:border-pink-500 focus:ring-1 focus:ring-pink-500 bg-white"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          賽季標籤 (Season Name)
+                        </label>
+                        <input
+                          type="text"
+                          value={editingBattle.season_name || ''}
+                          onChange={(e) => setEditingBattle({ ...editingBattle, season_name: e.target.value })}
+                          placeholder="例如：Season 1 終局決戰"
+                          className="block w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm focus:border-pink-500 focus:ring-1 focus:ring-pink-500 bg-white"
+                        />
+                      </div>
+
+                      <div className="sm:col-span-3">
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          比賽狀態 (Status)
+                        </label>
+                        <select
+                          value={editingBattle.status || 'live'}
+                          onChange={(e) => setEditingBattle({ ...editingBattle, status: e.target.value })}
+                          className="block w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm focus:border-pink-500 focus:ring-1 focus:ring-pink-500 bg-white"
+                        >
+                          <option value="live">🔥 進行中 (Live) - 前台首頁將即時動態呈現本對決</option>
+                          <option value="upcoming">⏳ 即將開始 (Upcoming) - 預告階段</option>
+                          <option value="ended">🏁 已完賽結算 (Ended) - 封存於賽季歷史殿堂</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* 雙方選手設定 (並列兩欄) */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {/* 紅方選手 */}
+                      <div className="bg-rose-50/60 p-5 rounded-2xl border border-rose-200 space-y-4">
+                        <div className="flex items-center justify-between pb-2 border-b border-rose-200">
+                          <span className="text-xs font-black text-rose-700 flex items-center gap-1.5">
+                            <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
+                            <span>選手 A (紅方陣營)</span>
+                          </span>
+                          <span className="text-[10px] text-rose-500 font-bold">LEFT SIDE</span>
+                        </div>
+
+                        {/* 選手立繪即時預覽 */}
+                        <div className="flex items-center gap-3">
+                          <div className="w-16 h-16 rounded-full overflow-hidden shrink-0 border-2 border-rose-400 bg-white shadow-sm">
+                            <SmartAvatar
+                              src={editingBattle.red_avatar || 'https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx105398-b673VtlCXHQT.jpg'}
+                              alt={editingBattle.red_name || '紅方'}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
+                              頭像外鏈 (Image URL) <span className="text-rose-500">*</span>
+                            </label>
+                            <input
+                              type="text"
+                              required
+                              value={editingBattle.red_avatar || ''}
+                              onChange={(e) => setEditingBattle({ ...editingBattle, red_avatar: e.target.value })}
+                              placeholder="請輸入高解析立繪外鏈網址"
+                              className="block w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs focus:border-rose-500 bg-white"
+                            />
+                          </div>
+                        </div>
+
+                        {/* 選手名稱 */}
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">
+                            選手名稱 (Name) <span className="text-rose-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={editingBattle.red_name || ''}
+                            onChange={(e) => setEditingBattle({ ...editingBattle, red_name: e.target.value })}
+                            placeholder="例如：成振宇 (Sung Jinwoo)"
+                            className="block w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-rose-500 bg-white"
+                          />
+                        </div>
+
+                        {/* 即時票數 */}
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">
+                            當前應援票數 (Votes)
+                          </label>
+                          <div className="relative">
+                            <input
+                              type="number"
+                              min="0"
+                              value={editingBattle.red_votes ?? 0}
+                              onChange={(e) => setEditingBattle({ ...editingBattle, red_votes: Number(e.target.value) })}
+                              className="block w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-mono font-bold text-rose-700 focus:border-rose-500 bg-white"
+                            />
+                            <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                              票
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 藍方選手 */}
+                      <div className="bg-blue-50/60 p-5 rounded-2xl border border-blue-200 space-y-4">
+                        <div className="flex items-center justify-between pb-2 border-b border-blue-200">
+                          <span className="text-xs font-black text-blue-700 flex items-center gap-1.5">
+                            <span className="w-2.5 h-2.5 rounded-full bg-blue-500" />
+                            <span>選手 B (藍方陣營)</span>
+                          </span>
+                          <span className="text-[10px] text-blue-500 font-bold">RIGHT SIDE</span>
+                        </div>
+
+                        {/* 選手立繪即時預覽 */}
+                        <div className="flex items-center gap-3">
+                          <div className="w-16 h-16 rounded-full overflow-hidden shrink-0 border-2 border-blue-400 bg-white shadow-sm">
+                            <SmartAvatar
+                              src={editingBattle.blue_avatar || 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx113415-bbBWj4pEFseh.jpg'}
+                              alt={editingBattle.blue_name || '藍方'}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
+                              頭像外鏈 (Image URL) <span className="text-rose-500">*</span>
+                            </label>
+                            <input
+                              type="text"
+                              required
+                              value={editingBattle.blue_avatar || ''}
+                              onChange={(e) => setEditingBattle({ ...editingBattle, blue_avatar: e.target.value })}
+                              placeholder="請輸入高解析立繪外鏈網址"
+                              className="block w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs focus:border-blue-500 bg-white"
+                            />
+                          </div>
+                        </div>
+
+                        {/* 選手名稱 */}
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">
+                            選手名稱 (Name) <span className="text-rose-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={editingBattle.blue_name || ''}
+                            onChange={(e) => setEditingBattle({ ...editingBattle, blue_name: e.target.value })}
+                            placeholder="例如：五條悟 (Satoru Gojo)"
+                            className="block w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 bg-white"
+                          />
+                        </div>
+
+                        {/* 即時票數 */}
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">
+                            當前應援票數 (Votes)
+                          </label>
+                          <div className="relative">
+                            <input
+                              type="number"
+                              min="0"
+                              value={editingBattle.blue_votes ?? 0}
+                              onChange={(e) => setEditingBattle({ ...editingBattle, blue_votes: Number(e.target.value) })}
+                              className="block w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-mono font-bold text-blue-700 focus:border-blue-500 bg-white"
+                            />
+                            <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                              票
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Modal Footer */}
+                    <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setEditingBattle(null)}
+                        className="px-5 py-2.5 rounded-xl text-xs font-bold text-slate-600 bg-white border border-slate-300 hover:bg-slate-50 transition cursor-pointer"
+                      >
+                        取消
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isSavingBattle}
+                        className="px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-pink-600 hover:bg-pink-700 shadow-md hover:shadow-lg transition cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+                      >
+                        {isSavingBattle ? (
+                          <>
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            <span>同步寫入資料庫中...</span>
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>{editingBattle.isNew ? '確認新增並寫入資料庫' : '儲存並同步至資料庫'}</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
 
             {/* 防弊審計日誌 */}
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 sm:p-8">
