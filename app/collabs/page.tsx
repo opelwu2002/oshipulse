@@ -316,27 +316,26 @@ export default function CollabsPage() {
                   className="bento-card p-6 flex flex-col justify-between space-y-5 hover:border-slate-300 transition-all"
                 >
                   <div className="space-y-4">
-                    {/* 宣傳海報容器（完整呈現海報全貌，object-contain 絕不裁切） */}
-                    <div className="relative w-full aspect-video rounded-2xl overflow-hidden bg-slate-950/95 border border-slate-200/80 group/poster flex items-center justify-center">
-                      {/* 底層柔光環境背景：以同張圖片做高斯模糊擴散填滿，避免兩側留下空洞黑邊 */}
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={event.image_url || "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=1200"}
-                        alt=""
-                        aria-hidden="true"
-                        className="absolute inset-0 w-full h-full object-cover blur-xl opacity-35 scale-110 pointer-events-none select-none"
-                      />
-                      {/* 頂層主宣傳海報：object-contain 100% 完整露出無裁切、無變形 */}
+                    {/* 宣傳海報容器（純白背景 bg-white + object-contain 完整露出 + SAMPLE 版權浮水印） */}
+                    <div className="relative w-full aspect-video rounded-2xl overflow-hidden bg-white border border-slate-200/90 shadow-2xs group/poster flex items-center justify-center p-3">
+                      {/* 主宣傳海報：object-contain 100% 完整露出，四周留白為純白乾淨背景 */}
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={event.image_url || "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=1200"}
                         alt={event.title}
                         referrerPolicy="no-referrer"
-                        className="relative z-10 w-full h-full max-h-full object-contain p-2 drop-shadow-md group-hover/poster:scale-[1.02] transition-transform duration-500"
+                        className="w-full h-full object-contain drop-shadow-xs group-hover/poster:scale-[1.02] transition-transform duration-500"
                         onError={(e: any) => {
                           e.currentTarget.src = "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=1200";
                         }}
                       />
+
+                      {/* SAMPLE 版權浮水印標籤（固定於右上角） */}
+                      <div className="absolute top-3 right-3 z-20 bg-black/60 backdrop-blur-sm border border-white/20 px-2.5 py-1 rounded-lg text-xs font-medium text-white shadow-sm flex items-center gap-1.5 pointer-events-none select-none">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                        <span>SAMPLE · 版權屬原創作者</span>
+                      </div>
+
                       <div className="absolute top-3 left-3 z-20 flex items-center gap-2">
                         <span className="bg-slate-950/80 backdrop-blur-md px-3 py-1 rounded-full text-xs font-black text-white shadow-sm">
                           {event.status || "官方活動"}
@@ -451,35 +450,34 @@ export default function CollabsPage() {
                   className="bento-card p-6 flex flex-col justify-between space-y-5 hover:border-slate-300 transition-all group"
                 >
                   <div className="space-y-4">
-                    {/* 橫幅大圖容器（完整呈現海報全貌，object-contain 絕不裁切） */}
-                    <div className="relative w-full aspect-video rounded-2xl overflow-hidden bg-slate-950/95 border border-slate-200/80 group/poster flex items-center justify-center">
-                      {/* 底層柔光環境背景：以同張圖片做高斯模糊擴散填滿，避免兩側留下空洞黑邊 */}
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={collab.banner_url}
-                        alt=""
-                        aria-hidden="true"
-                        className="absolute inset-0 w-full h-full object-cover blur-xl opacity-35 scale-110 pointer-events-none select-none"
-                      />
-                      {/* 頂層主宣傳海報：object-contain 100% 完整露出無裁切、無變形 */}
+                    {/* 橫幅大圖容器（純白背景 bg-white + object-contain 完整露出 + SAMPLE 版權浮水印） */}
+                    <div className="relative w-full aspect-video rounded-2xl overflow-hidden bg-white border border-slate-200/90 shadow-2xs group/poster flex items-center justify-center p-3">
+                      {/* 主宣傳海報：object-contain 100% 完整露出，四周留白為純白乾淨背景 */}
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={collab.banner_url}
                         alt={collab.title}
                         referrerPolicy="no-referrer"
-                        className="relative z-10 w-full h-full max-h-full object-contain p-2 drop-shadow-md group-hover/poster:scale-[1.02] transition-transform duration-500"
+                        className="w-full h-full object-contain drop-shadow-xs group-hover/poster:scale-[1.02] transition-transform duration-500"
                         onError={(e: any) => {
                           e.currentTarget.src = "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=1200";
                         }}
                       />
+
+                      {/* SAMPLE 版權浮水印標籤（固定於右上角） */}
+                      <div className="absolute top-3 right-3 z-20 bg-black/60 backdrop-blur-sm border border-white/20 px-2.5 py-1 rounded-lg text-xs font-medium text-white shadow-sm flex items-center gap-1.5 pointer-events-none select-none">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                        <span>SAMPLE · 版權屬原創作者</span>
+                      </div>
+
                       {/* 進度達成角標 */}
-                      <div className="absolute top-3 left-3 z-20 bg-white/95 backdrop-blur-sm px-3 py-1 rounded-full text-xs font-black text-cyber-rose shadow-sm flex items-center gap-1.5">
+                      <div className="absolute top-3 left-3 z-20 bg-white/95 backdrop-blur-sm border border-slate-200/70 px-3 py-1 rounded-full text-xs font-black text-cyber-rose shadow-sm flex items-center gap-1.5">
                         <span className="w-2 h-2 rounded-full bg-cyber-rose animate-pulse" />
                         <span>{percent >= 100 ? "🎉 已達標！即將落地" : `集氣進度 ${percent}%`}</span>
                       </div>
 
                       {/* 序號 ID 角標 */}
-                      <div className="absolute top-3 right-3 z-20 bg-slate-900/80 backdrop-blur-sm px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold text-slate-200">
+                      <div className="absolute bottom-3 right-3 z-20 bg-slate-900/80 backdrop-blur-sm px-2.5 py-0.5 rounded-md text-[10px] font-mono font-bold text-slate-200 shadow-xs border border-white/10">
                         #{collab.id}
                       </div>
                     </div>
