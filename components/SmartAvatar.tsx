@@ -106,7 +106,10 @@ export default function SmartAvatar({
   // 取得該角色固定且專屬的色彩主題
   const theme = useMemo(() => getGradientTheme(alt), [alt]);
 
-  const fillClasses = fill ? "absolute inset-0 w-full h-full object-cover" : "";
+  const hasObjectFit = /object-(contain|cover|fill|none|scale-down)/.test(className);
+  const fillClasses = fill
+    ? `absolute inset-0 w-full h-full ${hasObjectFit ? "" : "object-cover"}`
+    : "";
 
   // 🛡️ 破圖捕捉或無路徑：顯示質感漸層首字徽章
   if (!resolvedSrc || hasError) {
