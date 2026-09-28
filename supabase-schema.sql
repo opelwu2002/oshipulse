@@ -87,6 +87,29 @@ DROP POLICY IF EXISTS "Idols full access" ON public.idols;
 CREATE POLICY "Idols full access" ON public.idols FOR ALL USING (true) WITH CHECK (true);
 
 -- ------------------------------------------------------------------------------
+-- 3.1. 應援投票 RPC 原子累加函式 (increment_idol_votes)
+-- ------------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.increment_idol_votes(target_idol_id TEXT, amount INT DEFAULT 1)
+RETURNS BIGINT
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  new_votes BIGINT;
+BEGIN
+  UPDATE public.idols
+  SET votes = COALESCE(votes, 0) + amount,
+      updated_at = timezone('utc'::text, now())
+  WHERE id = target_idol_id
+  RETURNING votes INTO new_votes;
+  
+  RETURN new_votes;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.increment_idol_votes(TEXT, INT) TO anon, authenticated, service_role;
+
+-- ------------------------------------------------------------------------------
 -- 4. 賽季對決拔河擂台 (battles)
 -- ------------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.battles (

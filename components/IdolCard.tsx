@@ -41,8 +41,19 @@ export default function IdolCard({
   // 🛡️ 權威統一圖片萃取：嚴格優先匹配外部真圖，杜絕偽色塊
   const rawImageUrl = getIdolAvatar(idol);
 
-  // 票數支援 vote_count 或 votes
-  const voteCount = idol.vote_count ?? (idol as any).votes ?? 0;
+  // 本地即時樂觀票數狀態 (支援無重整立即跳動)
+  const [localAddedVotes, setLocalAddedVotes] = useState(0);
+  const [isSparkling, setIsSparkling] = useState(false);
+
+  // 票數支援 vote_count 或 votes，並疊加本地樂觀增加之票數
+  const baseVotes = Number(idol.vote_count ?? (idol as any).votes ?? 0);
+  const currentVotes = baseVotes + localAddedVotes;
+
+  const handleVoted = (amount: number) => {
+    setLocalAddedVotes((prev) => prev + (amount > 10 ? 1 : amount));
+    setIsSparkling(true);
+    setTimeout(() => setIsSparkling(false), 1200);
+  };
 
   return (
     <div
@@ -113,14 +124,32 @@ export default function IdolCard({
       <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
         <div>
           <span className="text-[10px] text-slate-400 block font-medium">累積應援聲量</span>
-          <span className="text-sm font-black text-slate-900 font-mono">
-            {formatNumber(voteCount)}{" "}
+          <div className="flex items-baseline gap-1">
+            <span
+              className={`text-sm font-black font-mono transition-all duration-300 ${
+                isSparkling
+                  ? "text-cyber-rose scale-110 drop-shadow-xs"
+                  : "text-slate-900"
+              }`}
+            >
+              {formatNumber(currentVotes)}
+            </span>
             <span className="text-[10px] font-normal text-slate-400">票</span>
-          </span>
+            {localAddedVotes > 0 && (
+              <span className="text-[10px] font-bold text-cyber-rose animate-bounce">
+                +{localAddedVotes}
+              </span>
+            )}
+          </div>
         </div>
 
         {showVoteButton && (
-          <VoteButton idolId={idol.id} idolName={idol.name} size="sm" />
+          <VoteButton
+            idolId={idol.id}
+            idolName={idol.name}
+            size="sm"
+            onVoted={handleVoted}
+          />
         )}
       </div>
     </div>

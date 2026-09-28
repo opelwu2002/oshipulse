@@ -45,10 +45,45 @@ export async function GET() {
 export async function PUT(request: Request) {
   try {
     const body = await request.json();
-    const { id, name, work, category, avatar, avatar_url, image_url, headshot_url, status, votes, match_history } = body;
+    const { id, name, work, category, avatar, avatar_url, image_url, headshot_url, status, votes, match_history, increment } = body;
 
     if (!id) {
       return NextResponse.json({ success: false, message: "缺少偶像 ID" }, { status: 400 });
+    }
+
+    const supabaseAdmin = getSupabaseAdminClient();
+
+    // 模式 A：前台應援投票票數累加 (Atomic Increment)
+    if (increment !== undefined) {
+      const { data: currentIdol, error: fetchErr } = await supabaseAdmin
+        .from("idols")
+        .select("id, name, votes")
+        .eq("id", id)
+        .single();
+
+      if (fetchErr || !currentIdol) {
+        return NextResponse.json({ success: false, message: "找不到該偶像角色" }, { status: 404 });
+      }
+
+      const inc = Number(increment) || 1;
+      const nextVotes = (Number(currentIdol.votes) || 0) + inc;
+
+      const { data: updated, error: updateErr } = await supabaseAdmin
+        .from("idols")
+        .update({ votes: nextVotes, updated_at: new Date().toISOString() })
+        .eq("id", id)
+        .select();
+
+      if (updateErr) {
+        return NextResponse.json({ success: false, message: updateErr.message }, { status: 500 });
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: `應援票數已成功即時寫入資料庫！`,
+        idol: updated?.[0],
+        votes: nextVotes,
+      });
     }
 
     const finalAvatar = (avatar || avatar_url || image_url || headshot_url || "").trim();
@@ -66,7 +101,6 @@ export async function PUT(request: Request) {
     if (votes !== undefined) updatePayload.votes = Number(votes) || 0;
     if (match_history !== undefined) updatePayload.match_history = match_history;
 
-    const supabaseAdmin = getSupabaseAdminClient();
     // 執行真實寫入 (使用 upsert 確保即使此 ID 為新項目亦能 100% 成功入庫)
     let { data, error } = await supabaseAdmin
       .from("idols")

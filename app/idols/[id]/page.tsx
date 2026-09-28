@@ -54,6 +54,8 @@ export default function IdolDetailPage() {
     if (id) loadRealIdol();
   }, [id]);
 
+  const [localAddedVotes, setLocalAddedVotes] = useState(0);
+
   const baseIdol = idols.find((i) => i.id === id) || idols[0];
   const realAvatar = getIdolAvatar(dbIdol) || getIdolAvatar(baseIdol);
   const realCover = getIdolCover(dbIdol) || getIdolCover(baseIdol);
@@ -160,12 +162,22 @@ export default function IdolDetailPage() {
           {/* 右側累積票數與即時應援鈕 */}
           <div className="flex items-center sm:flex-col sm:items-end justify-between gap-3 bg-white/10 backdrop-blur-md p-4 rounded-2xl border border-white/10">
             <div className="text-left sm:text-right text-white">
-              <div className="text-2xl sm:text-3xl font-mono font-black text-amber-400">
-                {formatNumber(idol.vote_count)}
+              <div className="text-2xl sm:text-3xl font-mono font-black text-amber-400 flex items-center gap-1.5">
+                <span>{formatNumber((Number(idol.vote_count) || 0) + localAddedVotes)}</span>
+                {localAddedVotes > 0 && (
+                  <span className="text-xs text-rose-400 font-bold animate-bounce">
+                    +{localAddedVotes}
+                  </span>
+                )}
               </div>
               <div className="text-[11px] text-slate-300">目前累積聲量點數</div>
             </div>
-            <VoteButton idolId={idol.id} idolName={idol.name} size="md" />
+            <VoteButton
+              idolId={idol.id}
+              idolName={idol.name}
+              size="md"
+              onVoted={(inc) => setLocalAddedVotes((prev) => prev + (inc > 10 ? 1 : inc))}
+            />
           </div>
         </div>
       </div>

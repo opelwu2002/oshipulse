@@ -48,7 +48,7 @@ export default function IdolsPage() {
         original_name: db.original_name || local?.original_name || db.work || "",
         country: db.country || local?.country || "JP",
         category: db.category || local?.category || "character",
-        vote_count: Number(db.votes ?? db.vote_count ?? local?.vote_count ?? 0),
+        vote_count: Math.max(Number(db.votes ?? db.vote_count ?? 0), Number(local?.vote_count ?? 0)),
         image_url: finalImg,
         avatar: finalImg,
         avatar_url: finalImg,
