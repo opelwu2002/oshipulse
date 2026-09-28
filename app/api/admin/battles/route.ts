@@ -4,6 +4,23 @@ import { getSupabaseAdminClient } from "@/lib/supabase";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+// 計算賽季對決依據當前時間的有效狀態
+function computeEffectiveStatus(battle: any, now: Date = new Date()): "live" | "upcoming" | "ended" {
+  if (battle.start_time) {
+    const start = new Date(battle.start_time);
+    if (!isNaN(start.getTime()) && now < start) {
+      return "upcoming";
+    }
+  }
+  if (battle.end_time) {
+    const end = new Date(battle.end_time);
+    if (!isNaN(end.getTime()) && now > end) {
+      return "ended";
+    }
+  }
+  return (battle.status as "live" | "upcoming" | "ended") || "live";
+}
+
 // GET: 取得對決清單與當前進行中對決
 export async function GET() {
   try {
@@ -21,9 +38,23 @@ export async function GET() {
       );
     }
 
-    const battles = data || [];
-    // 優先挑選狀態為 live 的對決，若無則取最新一筆
-    const liveBattle = battles.find((b: any) => b.status === "live") || battles[0] || null;
+    const now = new Date();
+    const battles = (data || []).map((b: any) => {
+      const effStatus = computeEffectiveStatus(b, now);
+      return {
+        ...b,
+        effective_status: effStatus,
+        // 若原始 status 存在且非手動強制覆蓋時，回傳有效狀態
+        status: b.status || effStatus,
+      };
+    });
+
+    // 優先挑選有效狀態為 live 的對決，若無則取第一筆或最新一筆
+    const liveBattle =
+      battles.find((b: any) => b.effective_status === "live") ||
+      battles.find((b: any) => b.status === "live") ||
+      battles[0] ||
+      null;
 
     return NextResponse.json({
       success: true,
@@ -60,6 +91,11 @@ export async function POST(request: Request) {
       );
     }
 
+    let determinedStatus = status;
+    if (!determinedStatus) {
+      determinedStatus = computeEffectiveStatus({ start_time, end_time });
+    }
+
     const insertPayload: any = {
       title: title.trim(),
       season_name: (season_name || "2026 跨界巔峰對決").trim(),
@@ -69,7 +105,7 @@ export async function POST(request: Request) {
       blue_name: blue_name.trim(),
       blue_avatar: (blue_avatar || "https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx113415-bbBWj4pEFseh.jpg").trim(),
       blue_votes: Number(blue_votes) || 0,
-      status: status || "live",
+      status: determinedStatus || "live",
       start_time: start_time ? new Date(start_time).toISOString() : null,
       end_time: end_time ? new Date(end_time).toISOString() : null,
       created_at: new Date().toISOString(),

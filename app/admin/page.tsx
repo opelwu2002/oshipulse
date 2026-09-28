@@ -698,6 +698,58 @@ export default function AdminPage() {
     }
   }
 
+  // 根據起訖時間自動判定對決狀態
+  function detectBattleStatusFromTimes(startTime?: string | null, endTime?: string | null): 'live' | 'upcoming' | 'ended' {
+    const now = new Date()
+    if (startTime) {
+      const s = new Date(startTime)
+      if (!isNaN(s.getTime()) && now < s) {
+        return 'upcoming'
+      }
+    }
+    if (endTime) {
+      const e = new Date(endTime)
+      if (!isNaN(e.getTime()) && now > e) {
+        return 'ended'
+      }
+    }
+    return 'live'
+  }
+
+  // 複製對決副本
+  async function handleDuplicateBattle(battle: any) {
+    try {
+      const payload = {
+        title: `${battle.title} (複製副本)`,
+        season_name: battle.season_name || '2026 跨界巔峰對決',
+        red_name: battle.red_name,
+        red_avatar: battle.red_avatar,
+        red_votes: 0, // 新副本預設初始票數清零
+        blue_name: battle.blue_name,
+        blue_avatar: battle.blue_avatar,
+        blue_votes: 0,
+        status: 'upcoming', // 副本預設為排程準備中
+        start_time: battle.start_time || null,
+        end_time: battle.end_time || null,
+      }
+
+      const res = await fetch('/api/admin/battles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const json = await res.json()
+      if (json.success) {
+        setMessage(`📋 複製對決【${payload.title}】成功！新副本已儲存至 Supabase 資料庫。`)
+        fetchBattles()
+      } else {
+        throw new Error(json.message || '複製對決失敗')
+      }
+    } catch (e: any) {
+      alert(`❌ 複製對決失敗：${e.message}`)
+    }
+  }
+
   async function fetchAuditLogs() {
     try {
       const res = await fetch('/api/admin/audit-logs')
@@ -2465,6 +2517,16 @@ export default function AdminPage() {
                           <div className="flex items-center gap-2">
                             <button
                               type="button"
+                              onClick={() => handleDuplicateBattle(battle)}
+                              className="px-3 py-1.5 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 text-xs font-bold transition flex items-center gap-1.5 border border-purple-500/30 cursor-pointer"
+                              title="複製此對決項目為新排程副本"
+                            >
+                              <Copy className="w-3.5 h-3.5 text-purple-300" />
+                              <span>複製副本</span>
+                            </button>
+
+                            <button
+                              type="button"
                               onClick={() =>
                                 setEditingBattle({
                                   ...battle,
@@ -2592,10 +2654,37 @@ export default function AdminPage() {
                         </div>
                       </div>
 
-                      <div className="sm:col-span-3">
-                        <label className="block text-xs font-bold text-slate-700 mb-1">
-                          比賽狀態 (Status)
-                        </label>
+                      <div className="sm:col-span-3 space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <label className="block text-xs font-bold text-slate-700">
+                            比賽狀態 (Status)
+                          </label>
+                          {(editingBattle.start_time || editingBattle.end_time) && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const detected = detectBattleStatusFromTimes(
+                                  editingBattle.start_time,
+                                  editingBattle.end_time
+                                );
+                                setEditingBattle({ ...editingBattle, status: detected });
+                                setMessage(
+                                  `✨ 已依據起訖時間自動將狀態切換為：${
+                                    detected === 'live'
+                                      ? '🔥 進行中 (LIVE)'
+                                      : detected === 'upcoming'
+                                      ? '⏳ 排程準備中 (Upcoming)'
+                                      : '🏁 已完賽結算 (Ended)'
+                                  }`
+                                );
+                              }}
+                              className="text-[11px] font-bold text-pink-600 hover:text-pink-700 flex items-center gap-1 cursor-pointer bg-pink-50 px-2 py-0.5 rounded-md border border-pink-200"
+                            >
+                              <Sparkles className="w-3 h-3 text-pink-500" />
+                              <span>依時間智慧判定狀態</span>
+                            </button>
+                          )}
+                        </div>
                         <select
                           value={editingBattle.status || 'live'}
                           onChange={(e) => setEditingBattle({ ...editingBattle, status: e.target.value })}

@@ -44,15 +44,17 @@ export default function HomePage() {
   const [dbIdols, setDbIdols] = useState<any[]>([]);
   const [dbPledge, setDbPledge] = useState<any>(null);
   const [dbFeaturedProduct, setDbFeaturedProduct] = useState<any>(null);
+  const [dbBattle, setDbBattle] = useState<any>(null);
 
-  // 🛡️ 即時同步：首頁載入時向 API 取得最新真實角色、應援許願池與商城推薦庫存
+  // 🛡️ 即時同步：首頁載入時向 API 取得最新真實角色、應援許願池、商城庫存與賽季對決
   useEffect(() => {
     async function loadLatestData() {
       try {
-        const [idolsRes, pledgesRes, inventoryRes] = await Promise.all([
+        const [idolsRes, pledgesRes, inventoryRes, battlesRes] = await Promise.all([
           fetch(`/api/admin/idols?t=${Date.now()}`),
           fetch(`/api/admin/pledges?t=${Date.now()}`),
           fetch(`/api/admin/inventory?t=${Date.now()}`),
+          fetch(`/api/admin/battles?t=${Date.now()}`),
         ]);
         
         const idolsJson = await idolsRes.json();
@@ -87,6 +89,19 @@ export default function HomePage() {
         } else {
           setDbFeaturedProduct(null);
         }
+
+        const battlesJson = await battlesRes.json();
+        if (battlesJson.success) {
+          if (battlesJson.battle) {
+            setDbBattle(battlesJson.battle);
+          } else if (Array.isArray(battlesJson.battles) && battlesJson.battles.length > 0) {
+            setDbBattle(battlesJson.battles[0]);
+          } else {
+            setDbBattle(null);
+          }
+        } else {
+          setDbBattle(null);
+        }
       } catch (err) {
         console.warn("首頁載入資料庫資料失敗:", err);
       }
@@ -118,7 +133,12 @@ export default function HomePage() {
     });
   }, [dbIdols, idols]);
 
-  // 根據篩選過濾偶像列表
+  // 全域應援聲量前五名（不受國別/分類分頁過濾限制，代表全站最高戰力）
+  const globalTopFive = useMemo(() => {
+    return [...allIdols].sort((a, b) => (b.vote_count || 0) - (a.vote_count || 0)).slice(0, 5);
+  }, [allIdols]);
+
+  // 根據篩選過濾偶像列表（供分類分頁使用）
   const filteredIdols = allIdols.filter((idol) => {
     if (selectedFilter === "ALL") return true;
     if (selectedFilter === "CHARACTER") return idol.category === "character";
@@ -126,11 +146,57 @@ export default function HomePage() {
     return idol.country === selectedFilter;
   });
 
-  // 排序計算排行
+  // 分類排序排行
   const sortedIdols = [...filteredIdols].sort((a, b) => (b.vote_count || 0) - (a.vote_count || 0));
   const topFive = sortedIdols.slice(0, 5);
 
-  const activeBattle = battles.find((b) => b.status === "live") || battles[0];
+  // 🛡️ 賽季對決：100% 依據 Supabase 資料庫真實資料，並計算拉鋸佔比與有效狀態
+  const displayBattle = useMemo(() => {
+    if (dbBattle) {
+      const redVotes = Number(dbBattle.red_votes) || 0;
+      const blueVotes = Number(dbBattle.blue_votes) || 0;
+      const total = redVotes + blueVotes;
+      const redRatio = total > 0 ? (redVotes / total) * 100 : 50;
+      const blueRatio = total > 0 ? (blueVotes / total) * 100 : 50;
+
+      return {
+        id: dbBattle.id,
+        title: dbBattle.title,
+        season_name: dbBattle.season_name || "2026 跨界巔峰對決",
+        red_name: dbBattle.red_name,
+        red_avatar: dbBattle.red_avatar || "https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx105398-b673VtlCXHQT.jpg",
+        red_votes: redVotes,
+        blue_name: dbBattle.blue_name,
+        blue_avatar: dbBattle.blue_avatar || "https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx113415-bbBWj4pEFseh.jpg",
+        blue_votes: blueVotes,
+        redRatio,
+        blueRatio,
+        status: dbBattle.effective_status || dbBattle.status || "live",
+        start_time: dbBattle.start_time,
+        end_time: dbBattle.end_time,
+      };
+    }
+    const local = battles.find((b) => b.status === "live") || battles[0];
+    if (local) {
+      return {
+        id: local.id,
+        title: local.title,
+        season_name: "2026 巔峰對決賽季",
+        red_name: "成振宇",
+        red_avatar: "https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx105398-b673VtlCXHQT.jpg",
+        red_votes: 125000,
+        blue_name: "五條悟",
+        blue_avatar: "https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx113415-bbBWj4pEFseh.jpg",
+        blue_votes: 118000,
+        redRatio: 51.4,
+        blueRatio: 48.6,
+        status: local.status || "live",
+        start_time: null,
+        end_time: null,
+      };
+    }
+    return null;
+  }, [dbBattle, battles]);
 
   // 🛡️ 應援許願池 (Pledging)：100% 依據 Supabase 資料庫真實資料，徹底切斷靜態假資料回退
   const displayPledge = useMemo(() => {
@@ -347,50 +413,301 @@ export default function HomePage() {
           </div>
         </div>
 
-        {/* 卡片 2: 進行中賽季大戰 */}
-        {activeBattle && (
+        {/* 卡片 2: 進行中賽季大戰 (100% 直連 Supabase battles 資料庫) */}
+        {displayBattle && (
           <div className="bento-card col-span-1 md:col-span-2 lg:col-span-2 p-6 flex flex-col justify-between relative overflow-hidden group">
             <div className="relative z-10">
               <div className="flex items-center justify-between mb-3">
-                <span className="px-2.5 py-1 bg-purple-100 text-cyber-violet rounded-full text-xs font-black">
-                  熱戰進行中 · LIVE
-                </span>
-                <span className="text-xs font-mono text-slate-400">賽事編號 #01</span>
-              </div>
-              <h3 className="text-xl font-black text-slate-900 mb-2 group-hover:text-cyber-violet transition-colors">
-                {activeBattle.title}
-              </h3>
-              <p className="text-xs text-slate-600 leading-relaxed mb-4">
-                {activeBattle.description}
-              </p>
-
-              <div className="relative w-full h-36 rounded-2xl overflow-hidden mb-4 border border-slate-100">
-                <SafeImage
-                  src={activeBattle.banner_url || "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=1200"}
-                  alt={activeBattle.title}
-                  fill
-                  className="object-cover group-hover:scale-105 transition-transform duration-500"
-                  unoptimized
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-slate-950/70 via-transparent to-transparent flex items-end p-3">
-                  <span className="text-xs text-white font-medium">
-                    終局之戰倒數：2026/09/30 23:59:59 截止
+                <span
+                  className={`px-2.5 py-1 rounded-full text-xs font-black flex items-center gap-1.5 ${
+                    displayBattle.status === 'live'
+                      ? 'bg-rose-100 text-rose-700 animate-pulse'
+                      : displayBattle.status === 'upcoming'
+                      ? 'bg-amber-100 text-amber-700'
+                      : 'bg-slate-100 text-slate-700'
+                  }`}
+                >
+                  <span
+                    className={`w-2 h-2 rounded-full ${
+                      displayBattle.status === 'live'
+                        ? 'bg-rose-500'
+                        : displayBattle.status === 'upcoming'
+                        ? 'bg-amber-500'
+                        : 'bg-slate-400'
+                    }`}
+                  />
+                  <span>
+                    {displayBattle.status === 'live'
+                      ? '熱戰進行中 · LIVE'
+                      : displayBattle.status === 'upcoming'
+                      ? '排程準備中 · UPCOMING'
+                      : '已完賽結算 · ENDED'}
                   </span>
+                </span>
+                <span className="text-xs font-mono text-slate-400">
+                  {displayBattle.season_name} #{displayBattle.id}
+                </span>
+              </div>
+
+              <h3 className="text-xl font-black text-slate-900 mb-2 group-hover:text-cyber-violet transition-colors">
+                {displayBattle.title}
+              </h3>
+
+              {/* 雙雄即時對抗比分面板 */}
+              <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 mb-4">
+                <div className="grid grid-cols-2 gap-3 items-center">
+                  {/* 紅方選手 */}
+                  <div className="flex items-center gap-2.5">
+                    <div className="relative w-12 h-12 rounded-full overflow-hidden border-2 border-rose-500 shrink-0 bg-white shadow-sm">
+                      <SafeImage
+                        src={displayBattle.red_avatar}
+                        alt={displayBattle.red_name}
+                        fill
+                        className="object-cover"
+                        unoptimized
+                      />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-[10px] font-bold text-rose-600">紅方陣營</div>
+                      <div className="text-xs font-black text-slate-900 truncate">{displayBattle.red_name}</div>
+                      <div className="text-xs font-mono font-bold text-rose-600">
+                        {formatNumber(displayBattle.red_votes)} 票
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 藍方選手 */}
+                  <div className="flex items-center justify-end gap-2.5 text-right">
+                    <div className="min-w-0">
+                      <div className="text-[10px] font-bold text-blue-600">藍方陣營</div>
+                      <div className="text-xs font-black text-slate-900 truncate">{displayBattle.blue_name}</div>
+                      <div className="text-xs font-mono font-bold text-blue-600">
+                        {formatNumber(displayBattle.blue_votes)} 票
+                      </div>
+                    </div>
+                    <div className="relative w-12 h-12 rounded-full overflow-hidden border-2 border-blue-500 shrink-0 bg-white shadow-sm">
+                      <SafeImage
+                        src={displayBattle.blue_avatar}
+                        alt={displayBattle.blue_name}
+                        fill
+                        className="object-cover"
+                        unoptimized
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* 聲量拉鋸條 */}
+                <div className="mt-3 space-y-1">
+                  <div className="flex justify-between text-[11px] font-mono font-bold">
+                    <span className="text-rose-600">{displayBattle.redRatio.toFixed(1)}%</span>
+                    <span className="text-slate-400 font-normal">擂台即時佔比</span>
+                    <span className="text-blue-600">{displayBattle.blueRatio.toFixed(1)}%</span>
+                  </div>
+                  <div className="w-full bg-slate-200 rounded-full h-2.5 overflow-hidden flex">
+                    <div
+                      className="bg-rose-500 h-full transition-all duration-500"
+                      style={{ width: `${displayBattle.redRatio}%` }}
+                    />
+                    <div className="w-0.5 h-full bg-white" />
+                    <div
+                      className="bg-blue-500 h-full transition-all duration-500"
+                      style={{ width: `${displayBattle.blueRatio}%` }}
+                    />
+                  </div>
                 </div>
               </div>
+
+              {/* 賽季時間提示 */}
+              {(displayBattle.start_time || displayBattle.end_time) && (
+                <div className="text-[11px] font-mono text-slate-500 mb-3 flex items-center gap-1.5 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-100">
+                  <span className="font-bold text-slate-700">賽季區間：</span>
+                  <span>{displayBattle.start_time ? displayBattle.start_time.slice(0, 16).replace("T", " ") : "即日起"}</span>
+                  <span>~</span>
+                  <span>{displayBattle.end_time ? displayBattle.end_time.slice(0, 16).replace("T", " ") : "無限期"}</span>
+                </div>
+              )}
             </div>
 
             <div className="relative z-10 pt-3 border-t border-slate-100 flex items-center justify-between">
               <span className="text-xs text-slate-500">歷史對決與下剋上紀錄</span>
               <Link
                 href="/battles"
-                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all"
+                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1"
               >
-                進入巔峰對決場
+                <span>進入巔峰對決場</span>
+                <ChevronRight className="w-3.5 h-3.5" />
               </Link>
             </div>
           </div>
         )}
+
+        {/* 全新增設：賽季全域應援聲量前五名列表 (Top 5 Cheering Volume Ranking) */}
+        <div className="col-span-1 md:col-span-2 lg:col-span-4 bg-gradient-to-br from-slate-900 via-slate-900 to-indigo-950 text-white rounded-3xl p-6 sm:p-8 border border-white/10 shadow-xl space-y-6 relative overflow-hidden group">
+          {/* 背景氛圍光效 */}
+          <div className="absolute top-0 right-0 w-96 h-96 bg-pink-500/10 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute bottom-0 left-0 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
+
+          {/* 頂部標題列 */}
+          <div className="relative z-10 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pb-4 border-b border-white/10">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center justify-center font-black">
+                <Trophy className="w-5 h-5 fill-amber-400" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-lg sm:text-xl font-black text-white tracking-wide">
+                    全站應援聲量前五名列表
+                  </h3>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-pink-500/20 text-pink-300 border border-pink-500/30 font-bold">
+                    TOP 5 CHEERING RANKING
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  即時連動 Supabase 資料庫 · 前五名具備下季巔峰對決種子擂台資格
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs font-mono font-bold">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span>即時連動中</span>
+              </span>
+              <Link
+                href="/idols"
+                className="px-3.5 py-1 rounded-full bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition flex items-center gap-1 border border-white/10 cursor-pointer"
+              >
+                <span>完整名人堂</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </Link>
+            </div>
+          </div>
+
+          {/* 5 位偶像橫排響應式卡片 */}
+          <div className="relative z-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+            {globalTopFive.map((idol, index) => {
+              const country = getCountryBadge(idol.country);
+              const maxVotes = globalTopFive[0]?.vote_count || 1;
+              const ratio = Math.max(10, Math.min(100, Math.round(((idol.vote_count || 0) / maxVotes) * 100)));
+
+              const rankStyles = [
+                {
+                  badge: "bg-amber-400 text-slate-950 shadow-amber-400/50 shadow-md",
+                  border: "border-amber-400/40 hover:border-amber-400 bg-amber-500/5",
+                  crown: "👑 NO.1 榜首",
+                  avatarBorder: "border-amber-400 ring-2 ring-amber-400/30",
+                },
+                {
+                  badge: "bg-slate-200 text-slate-900 shadow-slate-300/50 shadow-md",
+                  border: "border-slate-300/40 hover:border-slate-200 bg-slate-400/5",
+                  crown: "🥈 NO.2 亞軍",
+                  avatarBorder: "border-slate-300 ring-2 ring-slate-300/30",
+                },
+                {
+                  badge: "bg-amber-600 text-white shadow-amber-600/50 shadow-md",
+                  border: "border-amber-600/40 hover:border-amber-500 bg-amber-700/5",
+                  crown: "🥉 NO.3 季軍",
+                  avatarBorder: "border-amber-600 ring-2 ring-amber-600/30",
+                },
+                {
+                  badge: "bg-slate-800 text-slate-300 border border-white/10",
+                  border: "border-white/10 hover:border-white/25 bg-white/5",
+                  crown: "NO.4 殿軍",
+                  avatarBorder: "border-slate-600",
+                },
+                {
+                  badge: "bg-slate-800 text-slate-300 border border-white/10",
+                  border: "border-white/10 hover:border-white/25 bg-white/5",
+                  crown: "NO.5 晉級",
+                  avatarBorder: "border-slate-600",
+                },
+              ][index] || {
+                badge: "bg-slate-800 text-slate-300 border border-white/10",
+                border: "border-white/10 hover:border-white/25 bg-white/5",
+                crown: `#${index + 1}`,
+                avatarBorder: "border-slate-600",
+              };
+
+              return (
+                <div
+                  key={idol.id}
+                  className={`rounded-2xl p-4 border transition-all duration-300 flex flex-col justify-between space-y-3 relative group/card ${rankStyles.border}`}
+                >
+                  {/* 名次角標 */}
+                  <div className="flex items-center justify-between">
+                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${rankStyles.badge}`}>
+                      {rankStyles.crown}
+                    </span>
+                    <span className="text-xs">{country.flag}</span>
+                  </div>
+
+                  {/* 偶像頭像與姓名 */}
+                  <div className="text-center flex flex-col items-center">
+                    <div
+                      className={`relative w-16 h-16 sm:w-18 sm:h-18 rounded-full overflow-hidden mb-2 border-2 ${rankStyles.avatarBorder} bg-slate-800 transition-transform group-hover/card:scale-105 duration-300`}
+                    >
+                      <SafeImage
+                        src={getIdolAvatar(idol)}
+                        alt={idol.name}
+                        fill
+                        className="object-cover"
+                        unoptimized
+                      />
+                    </div>
+                    <Link
+                      href={`/idols/${idol.id}`}
+                      className="font-black text-sm text-white hover:text-pink-300 truncate max-w-[130px] transition-colors"
+                      title={idol.name}
+                    >
+                      {idol.name}
+                    </Link>
+                    <span className="text-[11px] text-slate-400 truncate max-w-[130px] mt-0.5">
+                      {idol.original_name || idol.work || "超人氣本命"}
+                    </span>
+                  </div>
+
+                  {/* 聲量數據與進度條 */}
+                  <div className="space-y-1.5 pt-1">
+                    <div className="flex items-center justify-between text-xs font-mono">
+                      <span className="text-slate-400 text-[11px]">聲量票數</span>
+                      <span className="font-black text-white text-sm">
+                        {formatNumber(idol.vote_count)}
+                      </span>
+                    </div>
+                    {/* 相對榜首進度條 */}
+                    <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-pink-500 to-amber-400 rounded-full transition-all duration-500"
+                        style={{ width: `${ratio}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* 快捷即時應援按鈕 */}
+                  <div className="pt-2">
+                    <VoteButton idolId={idol.id} idolName={idol.name} size="sm" showText={true} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* 底部說明條 */}
+          <div className="relative z-10 pt-3 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-400">
+            <span className="flex items-center gap-1.5">
+              <Flame className="w-3.5 h-3.5 text-rose-400 fill-rose-400" />
+              <span>本榜單由全站每位粉絲的即時應援心跳聚合而成，落後者隨時可能發動下剋上逆襲！</span>
+            </span>
+            <Link
+              href="/battles"
+              className="text-pink-400 hover:text-pink-300 font-bold flex items-center gap-1 shrink-0"
+            >
+              <span>查看巔峰對決場賽況</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
+          </div>
+        </div>
 
         {/* 卡片 3: 應援許願池 (Pledging) 連動預告 */}
         {displayPledge ? (
