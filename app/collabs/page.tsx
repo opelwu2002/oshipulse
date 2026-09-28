@@ -75,6 +75,29 @@ function getStatusBadgeConfig(status?: string) {
   }
 }
 
+const IMG_REGEX = /<!--__OSHI_IMAGE_URL__:(.*?)-->/;
+
+// 智慧解析圖片網址（優先原生欄位，次之自主題元標籤提取）
+function extractCollabImage(collab: any) {
+  if (!collab) return collab;
+  let imageUrl = collab.image_url || "";
+  let cleanTheme = collab.theme || "";
+
+  if (!imageUrl && cleanTheme) {
+    const match = cleanTheme.match(IMG_REGEX);
+    if (match && match[1]) {
+      imageUrl = match[1].trim();
+      cleanTheme = cleanTheme.replace(IMG_REGEX, "").trim();
+    }
+  }
+
+  return {
+    ...collab,
+    theme: cleanTheme,
+    image_url: imageUrl || null,
+  };
+}
+
 // 智慧宣傳海報橫幅挑選
 function getCollabBanner(collab: any): string {
   if (collab.image_url) return collab.image_url;
@@ -128,7 +151,7 @@ export default function CollabsPage() {
           wishesList = collabsJson.data;
         }
       }
-      setDbCollabs(wishesList);
+      setDbCollabs(wishesList.map(extractCollabImage));
 
       // 2. 直連 Supabase events 資料表
       let eventsList: any[] = [];

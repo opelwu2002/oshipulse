@@ -144,12 +144,14 @@ CREATE TABLE IF NOT EXISTS public.collab_wishes (
   votes INT DEFAULT 0,
   target INT DEFAULT 15000,
   status TEXT DEFAULT '集氣連署中',
+  image_url TEXT,
   start_time TIMESTAMPTZ,
   end_time TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now())
 );
 
--- 安全補齊 start_time 與 end_time 欄位（相容既有資料庫）
+-- 安全補齊 image_url、start_time 與 end_time 欄位（相容既有資料庫）
+ALTER TABLE public.collab_wishes ADD COLUMN IF NOT EXISTS image_url TEXT;
 ALTER TABLE public.collab_wishes ADD COLUMN IF NOT EXISTS start_time TIMESTAMPTZ;
 ALTER TABLE public.collab_wishes ADD COLUMN IF NOT EXISTS end_time TIMESTAMPTZ;
 

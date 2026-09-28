@@ -917,6 +917,27 @@ export default function AdminPage() {
   }
 
   // 4. 聯名與抽獎
+  function extractCollabImage(collab: any) {
+    if (!collab) return collab
+    let imageUrl = collab.image_url || ''
+    let cleanTheme = collab.theme || ''
+
+    const IMG_REGEX = /<!--__OSHI_IMAGE_URL__:(.*?)-->/
+    if (!imageUrl && cleanTheme) {
+      const match = cleanTheme.match(IMG_REGEX)
+      if (match && match[1]) {
+        imageUrl = match[1].trim()
+        cleanTheme = cleanTheme.replace(IMG_REGEX, '').trim()
+      }
+    }
+
+    return {
+      ...collab,
+      theme: cleanTheme,
+      image_url: imageUrl || '',
+    }
+  }
+
   async function fetchCollabs() {
     try {
       const { data: dbData, error: dbError } = await supabase
@@ -925,7 +946,7 @@ export default function AdminPage() {
         .order('id', { ascending: false })
 
       if (!dbError && dbData && dbData.length > 0) {
-        setCollabWishes(dbData)
+        setCollabWishes(dbData.map(extractCollabImage))
         return
       }
 
@@ -937,7 +958,7 @@ export default function AdminPage() {
       if (json.tableMissing) {
         setTableMissingWarning('collab_wishes')
       } else if (json.success) {
-        setCollabWishes(json.data || [])
+        setCollabWishes((json.data || []).map(extractCollabImage))
       }
     } catch (e) {
       console.error('抓取聯名許願失敗:', e)
@@ -952,6 +973,7 @@ export default function AdminPage() {
       brand: 'animate 安利美特',
       idol: '《咒術迴戰》五條悟',
       theme: '特設主題應援咖啡廳與限量特典杯墊',
+      image_url: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=1200',
       target: 15000,
       votes: 0,
       status: '集氣連署中',
@@ -971,6 +993,7 @@ export default function AdminPage() {
         brand: (editingCollab.brand || '').trim(),
         idol: (editingCollab.idol || '').trim(),
         theme: (editingCollab.theme || '').trim(),
+        image_url: (editingCollab.image_url || '').trim(),
         target: Number(editingCollab.target) || 15000,
         votes: Number(editingCollab.votes) || 0,
         status: editingCollab.status || '集氣連署中',
@@ -3302,6 +3325,20 @@ export default function AdminPage() {
                         className="border border-slate-200 rounded-2xl p-5 bg-white hover:shadow-md transition flex flex-col justify-between space-y-4"
                       >
                         <div className="space-y-3">
+                          {/* 宣傳海報縮圖 (若有設定) */}
+                          {c.image_url && (
+                            <div className="relative w-full h-36 rounded-xl overflow-hidden bg-slate-100 border border-slate-100 shrink-0">
+                              <img
+                                src={c.image_url}
+                                alt={c.theme}
+                                className="w-full h-full object-cover"
+                                onError={(e: any) => {
+                                  e.currentTarget.style.display = 'none'
+                                }}
+                              />
+                            </div>
+                          )}
+
                           <div className="flex justify-between items-start gap-2">
                             <span className="text-xs font-bold px-2.5 py-1 rounded bg-purple-50 text-purple-700 border border-purple-100">
                               {c.brand} × {c.idol}
@@ -3447,6 +3484,44 @@ export default function AdminPage() {
                         placeholder="例如：特設主題應援咖啡廳與限量特典杯墊"
                         className="block w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm focus:border-pink-500 bg-white"
                       />
+                    </div>
+
+                    {/* 活動宣傳圖片網址 (Image URL) */}
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
+                        <span className="flex items-center gap-1.5">
+                          <ImageIcon className="w-3.5 h-3.5 text-pink-500" />
+                          <span>活動宣傳圖片網址 (Image URL)</span>
+                        </span>
+                        <span className="text-[11px] text-slate-400 font-normal">支援外部高畫質宣傳海報 CDN 連結</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={editingCollab.image_url || ''}
+                        onChange={(e) => setEditingCollab({ ...editingCollab, image_url: e.target.value })}
+                        placeholder="請輸入該聯名企劃的宣傳圖片網址 (https://...)"
+                        className="block w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm focus:border-pink-500 bg-white font-mono"
+                      />
+
+                      {/* 圖片即時預覽 */}
+                      {editingCollab.image_url && (
+                        <div className="mt-2.5 relative w-full h-40 rounded-2xl overflow-hidden border border-slate-200 bg-slate-100 group/prev">
+                          <img
+                            src={editingCollab.image_url}
+                            alt="聯名宣傳海報預覽"
+                            className="w-full h-full object-cover"
+                            onError={(e: any) => {
+                              e.currentTarget.style.display = 'none'
+                            }}
+                          />
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent flex items-end p-2.5">
+                            <span className="text-white text-[11px] font-mono font-medium flex items-center gap-1 bg-black/40 px-2 py-0.5 rounded backdrop-blur-xs">
+                              <ImageIcon className="w-3 h-3 text-pink-400" />
+                              <span>宣傳海報即時預覽確認</span>
+                            </span>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
