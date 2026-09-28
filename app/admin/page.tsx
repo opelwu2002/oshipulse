@@ -1883,7 +1883,7 @@ export default function AdminPage() {
                           )}
                         </h3>
                         <p className="text-sm text-slate-500 line-clamp-2 leading-relaxed">
-                          {event.description || '無詳細說明'}
+                          {(event.description || '').replace(/<!--__OSHI_IMAGE_URL__:[\s\S]*?-->/g, '').trim() || '無詳細說明'}
                         </p>
 
                         {/* 🌟 活動起訖時間區間標籤展示 */}

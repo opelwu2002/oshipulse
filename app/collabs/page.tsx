@@ -75,25 +75,53 @@ function getStatusBadgeConfig(status?: string) {
   }
 }
 
-const IMG_REGEX = /<!--__OSHI_IMAGE_URL__:(.*?)-->/;
+const IMG_REGEX = /<!--__OSHI_IMAGE_URL__:([\s\S]*?)-->/g;
+
+// 徹底過濾內部 HTML 註解，確保畫面純淨無程式碼痕跡
+function sanitizeText(text?: string | null): string {
+  if (!text) return "";
+  return text.replace(IMG_REGEX, "").trim();
+}
+
+// 智慧解析活動圖片與淨化文字（優先讀取 image_url，若為空自 description 提取並徹底過濾註解痕跡）
+function extractEventImage(event: any) {
+  if (!event) return event;
+  let rawDesc = event.description || "";
+  let rawTitle = event.title || "";
+  let imageUrl = event.image_url ? String(event.image_url).trim() : "";
+
+  // 若 image_url 欄位為空，嘗試自描述中提取降級嵌入的圖片網址
+  if (!imageUrl && rawDesc) {
+    const match = rawDesc.match(/<!--__OSHI_IMAGE_URL__:([\s\S]*?)-->/);
+    if (match && match[1]) {
+      imageUrl = match[1].trim();
+    }
+  }
+
+  return {
+    ...event,
+    title: sanitizeText(rawTitle),
+    description: sanitizeText(rawDesc),
+    image_url: imageUrl || null,
+  };
+}
 
 // 智慧解析圖片網址（優先原生欄位，次之自主題元標籤提取）
 function extractCollabImage(collab: any) {
   if (!collab) return collab;
   let imageUrl = collab.image_url || "";
-  let cleanTheme = collab.theme || "";
+  let rawTheme = collab.theme || "";
 
-  if (!imageUrl && cleanTheme) {
-    const match = cleanTheme.match(IMG_REGEX);
+  if (!imageUrl && rawTheme) {
+    const match = rawTheme.match(/<!--__OSHI_IMAGE_URL__:([\s\S]*?)-->/);
     if (match && match[1]) {
       imageUrl = match[1].trim();
-      cleanTheme = cleanTheme.replace(IMG_REGEX, "").trim();
     }
   }
 
   return {
     ...collab,
-    theme: cleanTheme,
+    theme: sanitizeText(rawTheme),
     image_url: imageUrl || null,
   };
 }
@@ -173,7 +201,7 @@ export default function CollabsPage() {
           eventsList = eventsJson.data;
         }
       }
-      setDbEvents(eventsList);
+      setDbEvents(eventsList.map(extractEventImage));
     } catch (err) {
       console.warn("直連 Supabase 資料庫讀取失敗:", err);
     } finally {
@@ -351,8 +379,8 @@ export default function CollabsPage() {
 
                     {/* 標題與簡介 */}
                     <div className="space-y-2">
-                      <h3 className="text-xl font-black text-slate-900 leading-snug">{event.title}</h3>
-                      <p className="text-xs text-slate-600 leading-relaxed">{event.description}</p>
+                      <h3 className="text-xl font-black text-slate-900 leading-snug">{sanitizeText(event.title)}</h3>
+                      <p className="text-xs text-slate-600 leading-relaxed whitespace-pre-line">{sanitizeText(event.description)}</p>
                     </div>
 
                     {/* 日期與會場 */}
