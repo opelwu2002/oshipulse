@@ -316,16 +316,26 @@ export default function CollabsPage() {
                   className="bento-card p-6 flex flex-col justify-between space-y-5 hover:border-slate-300 transition-all"
                 >
                   <div className="space-y-4">
-                    {/* 宣傳海報 */}
-                    <div className="relative w-full aspect-[16/9] rounded-2xl overflow-hidden bg-slate-100 border border-slate-100">
+                    {/* 宣傳海報（沉浸式雙層防裁切容器：底層柔光背景 + 頂層海報全貌 object-contain） */}
+                    <div className="relative w-full aspect-video rounded-2xl overflow-hidden bg-slate-950 border border-slate-200/80 group/poster flex items-center justify-center">
+                      {/* 底層柔光環境背景：以同張圖片做高斯模糊擴散填滿，避免兩側留下空洞黑邊 */}
+                      <SafeImage
+                        src={event.image_url || "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=1200"}
+                        alt=""
+                        fill
+                        className="object-cover blur-xl opacity-35 scale-110 pointer-events-none select-none"
+                        unoptimized
+                        aria-hidden="true"
+                      />
+                      {/* 頂層主宣傳海報：object-contain 完整露出無裁切、無變形 */}
                       <SafeImage
                         src={event.image_url || "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=1200"}
                         alt={event.title}
                         fill
-                        className="object-cover"
+                        className="relative z-10 object-contain p-2 drop-shadow-md group-hover/poster:scale-[1.02] transition-transform duration-500"
                         unoptimized
                       />
-                      <div className="absolute top-3 left-3 flex items-center gap-2">
+                      <div className="absolute top-3 left-3 z-20 flex items-center gap-2">
                         <span className="bg-slate-950/80 backdrop-blur-md px-3 py-1 rounded-full text-xs font-black text-white shadow-sm">
                           {event.status || "官方活動"}
                         </span>
@@ -439,23 +449,33 @@ export default function CollabsPage() {
                   className="bento-card p-6 flex flex-col justify-between space-y-5 hover:border-slate-300 transition-all group"
                 >
                   <div className="space-y-4">
-                    {/* 橫幅大圖 */}
-                    <div className="relative w-full aspect-[16/9] rounded-2xl overflow-hidden bg-slate-100 border border-slate-100">
+                    {/* 橫幅大圖（沉浸式雙層防裁切容器：底層柔光背景 + 頂層海報全貌 object-contain） */}
+                    <div className="relative w-full aspect-video rounded-2xl overflow-hidden bg-slate-950 border border-slate-200/80 group/poster flex items-center justify-center">
+                      {/* 底層柔光環境背景：以同張圖片做高斯模糊擴散填滿，避免兩側留下空洞黑邊 */}
+                      <SafeImage
+                        src={collab.banner_url}
+                        alt=""
+                        fill
+                        className="object-cover blur-xl opacity-35 scale-110 pointer-events-none select-none"
+                        unoptimized
+                        aria-hidden="true"
+                      />
+                      {/* 頂層主宣傳海報：object-contain 完整露出無裁切、無變形 */}
                       <SafeImage
                         src={collab.banner_url}
                         alt={collab.title}
                         fill
-                        className="object-cover group-hover:scale-105 transition-transform duration-500"
+                        className="relative z-10 object-contain p-2 drop-shadow-md group-hover/poster:scale-[1.02] transition-transform duration-500"
                         unoptimized
                       />
                       {/* 進度達成角標 */}
-                      <div className="absolute top-3 left-3 bg-white/95 backdrop-blur-sm px-3 py-1 rounded-full text-xs font-black text-cyber-rose shadow-sm flex items-center gap-1.5">
+                      <div className="absolute top-3 left-3 z-20 bg-white/95 backdrop-blur-sm px-3 py-1 rounded-full text-xs font-black text-cyber-rose shadow-sm flex items-center gap-1.5">
                         <span className="w-2 h-2 rounded-full bg-cyber-rose animate-pulse" />
                         <span>{percent >= 100 ? "🎉 已達標！即將落地" : `集氣進度 ${percent}%`}</span>
                       </div>
 
                       {/* 序號 ID 角標 */}
-                      <div className="absolute top-3 right-3 bg-slate-900/80 backdrop-blur-sm px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold text-slate-200">
+                      <div className="absolute top-3 right-3 z-20 bg-slate-900/80 backdrop-blur-sm px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold text-slate-200">
                         #{collab.id}
                       </div>
                     </div>

@@ -1822,19 +1822,28 @@ export default function AdminPage() {
                       editingEventId === event.id ? 'border-pink-500 ring-2 ring-pink-500/20 shadow-md' : 'border-slate-200'
                     }`}
                   >
-                    <div className="h-44 bg-slate-800 relative flex items-center justify-center overflow-hidden">
+                    <div className="h-44 bg-slate-950 relative flex items-center justify-center overflow-hidden">
                       {event.image_url ? (
                         <>
+                          {/* 底層柔光環境背景 */}
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={event.image_url}
+                            alt=""
+                            aria-hidden="true"
+                            className="absolute inset-0 w-full h-full object-cover blur-xl opacity-35 scale-110 pointer-events-none select-none"
+                          />
+                          {/* 頂層主海報：完整露出不裁切 */}
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
                             src={event.image_url}
                             alt={event.title}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                            className="relative z-10 w-full h-full object-contain p-2 drop-shadow-md group-hover:scale-[1.02] transition-transform duration-500"
                             onError={(e) => {
                               (e.target as HTMLElement).style.display = 'none';
                             }}
                           />
-                          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/70 via-slate-950/20 to-transparent" />
+                          <div className="absolute inset-0 z-15 bg-gradient-to-t from-slate-950/70 via-transparent to-transparent pointer-events-none" />
                         </>
                       ) : (
                         <>
@@ -3325,15 +3334,26 @@ export default function AdminPage() {
                         className="border border-slate-200 rounded-2xl p-5 bg-white hover:shadow-md transition flex flex-col justify-between space-y-4"
                       >
                         <div className="space-y-3">
-                          {/* 宣傳海報縮圖 (若有設定) */}
+                          {/* 宣傳海報縮圖（沉浸式雙層防裁切容器：底層柔光背景 + 頂層海報全貌 object-contain） */}
                           {c.image_url && (
-                            <div className="relative w-full h-36 rounded-xl overflow-hidden bg-slate-100 border border-slate-100 shrink-0">
+                            <div className="relative w-full aspect-video rounded-xl overflow-hidden bg-slate-950 border border-slate-200 shrink-0 flex items-center justify-center">
+                              {/* 底層柔光環境背景 */}
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={c.image_url}
+                                alt=""
+                                aria-hidden="true"
+                                className="absolute inset-0 w-full h-full object-cover blur-xl opacity-35 scale-110 pointer-events-none select-none"
+                              />
+                              {/* 頂層主圖：object-contain 完整露出無裁切 */}
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
                               <img
                                 src={c.image_url}
                                 alt={c.theme}
-                                className="w-full h-full object-cover"
+                                className="relative z-10 w-full h-full object-contain p-1.5 drop-shadow-xs"
                                 onError={(e: any) => {
-                                  e.currentTarget.style.display = 'none'
+                                  const parent = e.currentTarget.parentElement
+                                  if (parent) parent.style.display = 'none'
                                 }}
                               />
                             </div>
@@ -3503,22 +3523,34 @@ export default function AdminPage() {
                         className="block w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm focus:border-pink-500 bg-white font-mono"
                       />
 
-                      {/* 圖片即時預覽 */}
+                      {/* 圖片即時預覽（沉浸式雙層防裁切容器：底層柔光背景 + 頂層海報全貌 object-contain） */}
                       {editingCollab.image_url && (
-                        <div className="mt-2.5 relative w-full h-40 rounded-2xl overflow-hidden border border-slate-200 bg-slate-100 group/prev">
+                        <div className="mt-2.5 relative w-full aspect-video rounded-2xl overflow-hidden border border-slate-300 bg-slate-950 group/prev flex items-center justify-center">
+                          {/* 底層柔光環境背景 */}
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
                             src={editingCollab.image_url}
-                            alt="聯名宣傳海報預覽"
-                            className="w-full h-full object-cover"
+                            alt=""
+                            aria-hidden="true"
+                            className="absolute inset-0 w-full h-full object-cover blur-xl opacity-35 scale-110 pointer-events-none select-none"
+                          />
+                          {/* 頂層主圖：object-contain 確保海報全貌一覽無遺 */}
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={editingCollab.image_url}
+                            alt="聯名宣傳海報全貌預覽"
+                            className="relative z-10 w-full h-full object-contain p-2 drop-shadow-sm"
                             onError={(e: any) => {
-                              e.currentTarget.style.display = 'none'
+                              const parent = e.currentTarget.parentElement
+                              if (parent) parent.style.display = 'none'
                             }}
                           />
-                          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent flex items-end p-2.5">
-                            <span className="text-white text-[11px] font-mono font-medium flex items-center gap-1 bg-black/40 px-2 py-0.5 rounded backdrop-blur-xs">
-                              <ImageIcon className="w-3 h-3 text-pink-400" />
-                              <span>宣傳海報即時預覽確認</span>
+                          <div className="absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/85 via-black/40 to-transparent p-2.5 flex items-center justify-between">
+                            <span className="text-white text-[11px] font-mono font-bold flex items-center gap-1.5 bg-black/50 px-2.5 py-1 rounded-md backdrop-blur-xs border border-white/10">
+                              <ImageIcon className="w-3.5 h-3.5 text-pink-400" />
+                              <span>海報全貌預覽 (無裁切·無變形)</span>
                             </span>
+                            <span className="text-[10px] text-slate-300 font-mono">16:9 展演舞台適配</span>
                           </div>
                         </div>
                       )}
