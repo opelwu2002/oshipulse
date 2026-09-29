@@ -29,6 +29,9 @@ export const metadata: Metadata = {
     "宇沛實業",
   ],
   authors: [{ name: "宇沛實業股份有限公司 (UPAY Corp.)" }],
+  verification: {
+    google: "67Yo8sRC_Tt0cHB4KjdM29KeyGpIaI4nkJeXGB3zhPU",
+  },
 };
 
 export default function RootLayout({
